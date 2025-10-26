@@ -39,7 +39,7 @@ structure Task (dims : List InOutDim) where
 
 structure Transform (α : Type) (β : Type) where
   name : String
-  apply : α → Option β
+  apply : α → β
 
 instance : Repr (Transform α β) where
   reprPrec t _ := t.name
@@ -48,26 +48,27 @@ inductive Program : Type → Type → Type _ where
   | last : Transform α ω → Program α ω
   | step : Transform α β → Program β ω → Program α ω
 
-/-- Evaluate a program by composing its transforms. -/
-def run {α ω : Type} : Program α ω → α → Option ω
+inductive Programs : List InOutDim → Type _ where
+  | nil : Programs []
+  | cons : Program (Grid d.inRows d.inCols) (Grid d.outRows d.outCols) → Programs ds → Programs (d :: ds)
+
+def run : Program α ω → α → ω
   | .last t => t.apply
   | .step t rest =>
-      fun input => do
-        let mid ← t.apply input
+      fun input =>
+        let mid := t.apply input
         run rest mid
 
-def validateExample {d : InOutDim} (prog : Program (Grid d.inRows d.inCols) (Grid d.outRows d.outCols)) (ex : Example d) : Option Bool :=
-  do
-    let output ← run prog ex.input
-    output == ex.output
+def validateExample {d : InOutDim} (prog : Program (Grid d.inRows d.inCols) (Grid d.outRows d.outCols)) (ex : Example d) : Bool :=
+  let output := run prog ex.input
+  output == ex.output
 
-def validateTask (prog : (d : InOutDim) →  Program (Grid d.inRows d.inCols) (Grid d.outRows d.outCols)) (task : Task dims) : Option Bool :=
-  all task.examples (fun d ex => validateExample (prog d) ex)
+def validateTask (progs : Programs dims) (task : Task dims) : Bool :=
+  all progs task.examples (fun prog ex => validateExample prog ex)
   where
-    all {ds : List InOutDim} : Examples ds → ((d : InOutDim) → Example d → Option Bool) → Option Bool
-      | .nil, _ => .some true
-      | .cons (d := d) ex rest, p => do
-          let b ← p d ex
-          if b then all rest p else .some false
+    all {ds : List InOutDim} : Programs ds → Examples ds → ({d : InOutDim} → Program (Grid d.inRows d.inCols) (Grid d.outRows d.outCols) → Example d → Bool) → Bool
+    | .nil, .nil, _ => true
+    | .cons prog restProgs, .cons ex restExs, f =>
+        f prog ex && all restProgs restExs f
 
 end CogitoCore.ARC.Definitions
