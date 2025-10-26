@@ -35,9 +35,9 @@ def identityTask : Task [oneByOneDims] :=
   { name := "identity"
   , examples := identityExamples }
 
-
-def identitySolution : Solution [oneByOneDims] :=
-  { task := identityTask
+def identitySolution : Solution :=
+  { dims := [oneByOneDims]
+  , task := identityTask
   , programs := .cons (.last gridIdentityTransform) .nil
   , isValid := by rfl }
 

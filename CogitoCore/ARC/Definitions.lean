@@ -88,7 +88,8 @@ def validateTask (progs : Programs dims) (task : Task dims) : Bool :=
         f prog ex && all restProgs restExs f
 
 -- Certified pairing of programs with a task, together with the validation proof.
-structure Solution (dims : List InOutDim) where
+structure Solution where
+  dims : List InOutDim
   programs : Programs dims
   task : Task dims
   isValid : validateTask programs task = true
