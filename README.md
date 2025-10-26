@@ -1,33 +1,19 @@
 # CogitoCore
 
-CogitoCore is a Lean 4 research playground for program-synthesis strategies inspired by the ARC-AGI benchmark. The initial scaffold focuses on a tiny handcrafted task so that synthesis ideas can be prototyped quickly in Lean.
+CogitoCore probes how large language models cope with program generation when immersed in Lean 4's rich abstractions and compositional tooling. The project invites an LLM to assemble higher-order transformations, reuse proofs, and compose reusable modules while staying within the theorem prover's precise type system. ARC-AGI tasks supply the reasoning benchmark, so success means leveraging Lean's ARC structures to help the LLM complete each task efficiently while preserving the assistant's guarantees.
 
 ## Prerequisites
 
 - Install [elan](https://leanprover-community.github.io/get_started.html) so the pinned Lean toolchain can be fetched automatically.
 - Ensure the `lake` build tool (ships with Lean 4) is available on your `$PATH`.
 
-## Quickstart
-
-```
-lake build              # Compile the library
-lake exe cogito-core    # Run the demo synthesis pipeline
-```
-
-The demo prints the result of running a naïve search over a few handcrafted programs against the bundled ARC-style task.
 
 ## Project Layout
 
 - `lean-toolchain`: pins Lean 4 version `leanprover/lean4:4.8.0`.
 - `lakefile.toml`, `lakefile.lean`: Lake package configuration and executable target.
-- `CogitoCore/`: library source code.
-	- `ARC/`: ARC grid/task representations and sample data.
-	- `Synthesis/`: DSL primitives and a naïve synthesis engine.
-- `Main.lean`: entry point that runs the demo search.
-- `Test/Smoke.lean`: simple regression check using `#eval`.
-
-## Next Steps
-
-- Extend `CogitoCore.Synthesis.Engine` with richer search strategies (enumerative, constraint solving, etc.).
-- Encode additional ARC tasks inside `CogitoCore.ARC.Task` for broader coverage.
-- Integrate Lean automation (e.g., metaprogramming tactics) to guide synthesis.
+- `CogitoCore/ARC/Definitions.lean`: core cell, grid, and task abstractions with rich typing hooks.
+- `CogitoCore/ARC/Transformations.lean`: reusable building blocks that LLMs can compose into larger programs.
+- `CogitoCore/ARC/Tasks/`: curated ARC-AGI missions expressed both as Lean examples and raw JSON metadata.
+- `data/training/`: original ARC JSON payloads mirrored from the benchmark.
+- `Main.lean`: current CLI stub; will soon drive the ARC evaluation harness.
