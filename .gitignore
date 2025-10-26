@@ -1,0 +1,7 @@
+/lake-packages/
+/lean_packages/
+/.lake/
+/build/
+/tmp/
+*.olean
+*.ilean
