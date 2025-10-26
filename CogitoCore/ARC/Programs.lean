@@ -7,17 +7,35 @@ open Program
 
 namespace CogitoCore.ARC.Programs
 
-def gridIdentityTransform : Transform (Grid 1 1) (Grid 1 1) :=
-  { name := "grid-id"
-  , apply := id }
+private def gridIdentityTransform (rows cols : Nat) : Transform (Grid rows cols) (Grid rows cols) :=
+  { name := s!"grid-id-{rows}x{cols}"
+  , apply := fun g => .some g }
 
-def identityProgram : Program (Grid 1 1) (Grid 1 1) :=
-  Program.last gridIdentityTransform
+private def failureTransform : Transform α β :=
+  { name := "failure-transform"
+  , apply := fun _ => .none }
 
-def identityValidation : Bool :=
+/-- ------------------------------------------------------------------
+    Identity program dispatcher using trivial transforms or failure.
+    ------------------------------------------------------------------ -/
+def identityProgram (d : InOutDim) : Program (Grid d.inRows d.inCols) (Grid d.outRows d.outCols) :=
+  match d with
+  | { inRows := inRows, inCols := inCols, outRows := outRows, outCols := outCols } =>
+      if hRows : inRows = outRows then
+        if hCols : inCols = outCols then
+          by
+            cases hRows
+            cases hCols
+            exact Program.last (gridIdentityTransform inRows inCols)
+        else
+          Program.last failureTransform
+      else
+        Program.last failureTransform
+
+def identityValidation : Option Bool :=
   validateTask identityProgram identityTask
 
-def identityWitness : { p : Program (Grid 1 1) (Grid 1 1) // validateTask p identityTask = true } :=
+def identityWitness : { p : (d : InOutDim) → Program (Grid d.inRows d.inCols) (Grid d.outRows d.outCols) // validateTask p identityTask = .some true } :=
   ⟨identityProgram, by rfl⟩
 
 end CogitoCore.ARC.Programs
