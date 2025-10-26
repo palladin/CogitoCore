@@ -2,6 +2,12 @@
 
 CogitoCore probes how large language models cope with program generation when immersed in Lean 4's rich abstractions and compositional tooling. The project invites an LLM to assemble higher-order transformations, reuse proofs, and compose reusable modules while staying within the theorem prover's precise type system. ARC-AGI tasks supply the reasoning benchmark, so success means leveraging Lean's ARC structures to help the LLM complete each task efficiently while preserving the assistant's guarantees.
 
+## In a Nutshell
+
+- Lean provides the typed playground: ARC grids, task specs, and reusable transformations are encoded directly in Lean to enforce compositional correctness.
+- The LLM proposes programs: candidate pipelines are stitched together from the provided abstractions and must pass Lean's type checker.
+- ARC-AGI measures success: tasks from the benchmark validate whether the Lean-guided synthesis flow solves real ARC missions end to end.
+
 ## Prerequisites
 
 - Install [elan](https://leanprover-community.github.io/get_started.html) so the pinned Lean toolchain can be fetched automatically.
