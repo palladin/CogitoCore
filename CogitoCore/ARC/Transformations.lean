@@ -5,8 +5,8 @@ open CogitoCore.ARC.Definitions
 namespace CogitoCore.ARC.Transformations
 
 
-def gridIdentityTransform : Transform (Grid rows cols) (Grid rows cols) :=
-  { name := s!"grid-id-{rows}x{cols}"
-  , apply := id }
+def gridIdentityTransform : Transform Grid Grid :=
+  { name := s!"grid-id"
+  , apply := fun input => pure input }
 
 end CogitoCore.ARC.Transformations

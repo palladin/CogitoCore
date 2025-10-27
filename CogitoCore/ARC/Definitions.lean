@@ -20,38 +20,26 @@ inductive Cell where
   deriving Repr, BEq
 
 
--- Rectangular grid with fixed dimensions enforced at the type level.
-structure Grid (rows : Nat) (cols : Nat) where
-  cells : Vector (Vector Cell cols) rows
+-- Rectangular grid stored as nested arrays.
+structure Grid where
+  cells : Array (Array Cell)
   deriving Repr, BEq
 
--- Captures the input/output dimensions for a single ARC mission instance.
-structure InOutDim where
-  inRows : Nat
-  inCols : Nat
-  outRows : Nat
-  outCols : Nat
-
 -- Bundles the concrete grids for one training example.
-structure Example (dim : InOutDim) where
-  input : Grid dim.inRows dim.inCols
-  output : Grid dim.outRows dim.outCols
+structure Example where
+  input : Grid
+  output : Grid
   deriving Repr
 
--- Aligns example payloads with their dimension witness list.
-inductive Examples : List InOutDim → Type where
-  | nil : Examples []
-  | cons : Example d → Examples ds → Examples (d :: ds)
-
 -- Full task containing the mission name and its paired training examples.
-structure Task (dims : List InOutDim) where
+structure Task where
   name : String
-  examples : Examples dims
+  examples : List Example
 
--- Named transformation that maps one grid representation into another.
+-- Named transformation that maps one grid representation into another, possibly failing with a message.
 structure Transform (α : Type) (β : Type) where
   name : String
-  apply : α → β
+  apply : α → Except String β
 
 instance : Repr (Transform α β) where
   reprPrec t _ := t.name
@@ -61,38 +49,35 @@ inductive Program : Type → Type → Type _ where
   | last : Transform α ω → Program α ω
   | step : Transform α β → Program β ω → Program α ω
 
--- Collection of programs aligned with a dimension witness list.
-inductive Programs : List InOutDim → Type _ where
-  | nil : Programs []
-  | cons : Program (Grid d.inRows d.inCols) (Grid d.outRows d.outCols) → Programs ds → Programs (d :: ds)
-
--- Executes a program by threading the intermediate grids through each transform.
-def run : Program α ω → α → ω
+-- Executes a program by threading intermediate results through each transform, surfacing the first failure.
+def run : Program α ω → α → Except String ω
   | .last t => t.apply
   | .step t rest =>
-      fun input =>
-        let mid := t.apply input
+      fun input => do
+        let mid ← t.apply input
         run rest mid
 
-def validateExample {d : InOutDim} (prog : Program (Grid d.inRows d.inCols) (Grid d.outRows d.outCols)) (ex : Example d) : Bool :=
-  let output := run prog ex.input
-  output == ex.output
+def validateExample (prog : Program Grid Grid) (ex : Example) : Except String Bool :=
+  do
+    let output ← run prog ex.input
+    pure <| output == ex.output
 
 -- Validates a solution candidate by checking each program against its paired example.
-def validateTask (progs : Programs dims) (task : Task dims) : Bool :=
-  all progs task.examples (fun prog ex => validateExample prog ex)
-  where
-    all {ds : List InOutDim} : Programs ds → Examples ds → ({d : InOutDim} → Program (Grid d.inRows d.inCols) (Grid d.outRows d.outCols) → Example d → Bool) → Bool
-    | .nil, .nil, _ => true
-    | .cons prog restProgs, .cons ex restExs, f =>
-        f prog ex && all restProgs restExs f
+def validateTask (examples : List Example) (program : Program Grid Grid) : Except String Bool :=
+  match examples with
+  | [] => pure true
+  | ex :: rest => do
+      let valid ← validateExample program ex
+      if !valid then
+        return false
+      else
+        validateTask rest program
 
--- Certified pairing of programs with a task, together with the validation proof.
+-- Certified pairing of a program with a task together with a proof that validation succeeds.
 structure Solution where
-  dims : List InOutDim
-  programs : Programs dims
-  task : Task dims
-  isValid : validateTask programs task = true
+  program : Program Grid Grid
+  task : Task
+  isValid : validateTask task.examples program = .ok true
 
 
 end CogitoCore.ARC.Definitions

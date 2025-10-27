@@ -6,39 +6,21 @@ open CogitoCore.ARC.Transformations
 
 namespace CogitoCore.ARC.Tasks
 
-/-- Build a length-one vector holding the provided element. -/
-def singletonVector {α : Type} (a : α) : Vector α 1 :=
-  ⟨#[a], by rfl⟩
-
-/-- Construct a `1 × 1` grid whose sole cell stores `value`. -/
-def oneByOneGrid (value : Cell) : Grid 1 1 :=
-  { cells := ⟨#[singletonVector value], by rfl⟩ }
-
-/-- Dimensions for the simple identity task. -/
-def oneByOneDims : InOutDim :=
-  { inRows := 1
-  , inCols := 1
-  , outRows := 1
-  , outCols := 1 }
-
-/-- Example illustrating the identity task on a `1 × 1` grid. -/
-def identityExample : Example oneByOneDims :=
-  { input := oneByOneGrid .C5
-  , output := oneByOneGrid .C5 }
-
-/-- Wrapper giving a single example list for the identity task. -/
-def identityExamples : Examples [oneByOneDims] :=
-  .cons identityExample .nil
+def identityExample : Example :=
+  { input := { cells := #[#[.C5]] }
+  , output := { cells := #[#[.C5]] } }
 
 /-- Simple identity ARC task mirroring its input. -/
-def identityTask : Task [oneByOneDims] :=
+def identityTask : Task :=
   { name := "identity"
-  , examples := identityExamples }
+  , examples := [identityExample] }
+
+def identityProgram : Program Grid Grid :=
+  .last gridIdentityTransform
 
 def identitySolution : Solution :=
-  { dims := [oneByOneDims]
-  , task := identityTask
-  , programs := .cons (.last gridIdentityTransform) .nil
+  { task := identityTask
+  , program := identityProgram
   , isValid := by rfl }
 
 end CogitoCore.ARC.Tasks
