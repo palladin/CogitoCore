@@ -21,9 +21,7 @@ inductive Cell where
 
 
 -- Rectangular grid stored as nested arrays.
-structure Grid where
-  cells : Array (Array Cell)
-  deriving Repr, BEq
+abbrev Grid := Array (Array Cell)
 
 -- Bundles the concrete grids for one training example.
 structure Example where
