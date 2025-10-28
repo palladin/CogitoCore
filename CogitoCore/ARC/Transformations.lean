@@ -1380,4 +1380,162 @@ def copyShapeToAnchorTransform : Transform Grid Grid :=
   { name := "copy-shape-to-anchor"
   , apply := fun grid => pure <| copyShapeToAnchor grid }
 
+private def overlayAnchorNeighborhoods (grid : Grid) : Grid :=
+  -- Find all cells with value 5 (anchors)
+  let anchors :=
+    concatMap (enumerateArray grid) fun rowInfo =>
+      match rowInfo with
+      | (rowIdx, row) =>
+          concatMap (enumerateArray row) fun cellInfo =>
+            match cellInfo with
+            | (colIdx, cell) =>
+                if cell == Cell.C5 then
+                  [(rowIdx, colIdx)]
+                else
+                  []
+
+  -- Initialize 3×3 output with 5 at center
+  let output := Array.mk [
+    Array.mk [Cell.C0, Cell.C0, Cell.C0],
+    Array.mk [Cell.C0, Cell.C5, Cell.C0],
+    Array.mk [Cell.C0, Cell.C0, Cell.C0]
+  ]
+
+  -- For each anchor, overlay its neighborhood onto the output
+  anchors.foldl
+    (fun acc anchor =>
+      match anchor with
+      | (anchorRow, anchorCol) =>
+          -- Iterate over 3×3 neighborhood of this anchor
+          let offsets : List (Int × Int) := [(-1, -1), (-1, 0), (-1, 1),
+                                              (0, -1),  (0, 0),  (0, 1),
+                                              (1, -1),  (1, 0),  (1, 1)]
+          offsets.foldl
+            (fun innerAcc offset =>
+              match offset with
+              | (dr, dc) =>
+                  let inputRow : Int := Int.ofNat anchorRow + dr
+                  let inputCol : Int := Int.ofNat anchorCol + dc
+                  let outputRow : Int := 1 + dr
+                  let outputCol : Int := 1 + dc
+
+                  if (inputRow < 0) || (inputCol < 0) ||
+                     (outputRow < 0) || (outputCol < 0) ||
+                     (outputRow ≥ 3) || (outputCol ≥ 3) then
+                    innerAcc
+                  else
+                    let inR := Int.toNat inputRow
+                    let inC := Int.toNat inputCol
+                    let outR := Int.toNat outputRow
+                    let outC := Int.toNat outputCol
+
+                    -- Get value from input
+                    let inputVal := cellAt grid inR inC
+
+                    -- Only place non-zero, non-5 values if output is currently 0
+                    if (inputVal != Cell.C0) && (inputVal != Cell.C5) then
+                      let currentVal := cellAt innerAcc outR outC
+                      if currentVal == Cell.C0 then
+                        setCell innerAcc outR outC inputVal
+                      else
+                        innerAcc
+                    else
+                      innerAcc)
+            acc)
+    output
+
+/-- Find all cells with color 5 (anchors), collect their 3×3 neighborhoods,
+and overlay them into a single 3×3 output grid with 5 at the center. -/
+def overlayAnchorNeighborhoodsTransform : Transform Grid Grid :=
+  { name := "overlay-anchor-neighborhoods"
+  , apply := fun grid => pure <| overlayAnchorNeighborhoods grid }
+
+private def countCellsByColor (grid : Grid) : List (Cell × Nat) :=
+  (enumerateArray grid).foldl
+    (fun acc rowInfo =>
+      match rowInfo with
+      | (_, row) =>
+          (enumerateArray row).foldl
+            (fun innerAcc cellInfo =>
+              match cellInfo with
+              | (_, cell) =>
+                  if cell == Cell.C0 then
+                    innerAcc
+                  else
+                    incrementCount innerAcc cell)
+            acc)
+    []
+
+private def findMostFrequentColor (grid : Grid) : Option Cell :=
+  let counts := countCellsByColor grid
+  match maxCount counts with
+  | none => none
+  | some (color, _) => some color
+
+private def extractMostFrequentColorBoundingBox (grid : Grid) : Grid :=
+  match findMostFrequentColor grid with
+  | none => grid
+  | some targetColor =>
+      match boundingBoxForColor grid targetColor with
+      | none => grid
+      | some (minRow, maxRow, minCol, maxCol) =>
+          let height := maxRow + 1 - minRow
+          let width := maxCol + 1 - minCol
+          let rows := List.range height
+          let cols := List.range width
+          Array.mk <|
+            rows.map fun rowOffset =>
+              let rowIdx := minRow + rowOffset
+              Array.mk <|
+                cols.map fun colOffset =>
+                  let colIdx := minCol + colOffset
+                  cellAt grid rowIdx colIdx
+
+/-- Extract the bounding box region of the most frequently occurring non-zero color. -/
+def extractMostFrequentColorBoundingBoxTransform : Transform Grid Grid :=
+  { name := "extract-most-frequent-color-bbox"
+  , apply := fun grid => pure <| extractMostFrequentColorBoundingBox grid }
+
+private def countOnesInGrid (grid : Grid) : Nat :=
+  (enumerateArray grid).foldl
+    (fun acc rowInfo =>
+      match rowInfo with
+      | (_, row) =>
+          (enumerateArray row).foldl
+            (fun innerAcc cellInfo =>
+              match cellInfo with
+              | (_, cell) =>
+                  if cell == Cell.C1 then
+                    innerAcc + 1
+                  else
+                    innerAcc)
+            acc)
+    0
+
+private def countOnesAndPlaceTwos (grid : Grid) : Grid :=
+  let count := countOnesInGrid grid
+
+  -- Create 3x3 output grid
+  let emptyRow := Array.mk [Cell.C0, Cell.C0, Cell.C0]
+  let output := Array.mk [emptyRow, emptyRow, emptyRow]
+
+  -- Positions to place 2s: (0,0), (0,1), (0,2), (1,1)
+  let positions : List (Nat × Nat) := [(0, 0), (0, 1), (0, 2), (1, 1)]
+
+  -- Place 2s in the specified positions
+  let rec placeTwos (pos : List (Nat × Nat)) (remaining : Nat) (acc : Grid) : Grid :=
+    match pos, remaining with
+    | _, 0 => acc
+    | [], _ => acc
+    | (r, c) :: rest, Nat.succ n =>
+        let acc := setCell acc r c Cell.C2
+        placeTwos rest n acc
+
+  placeTwos positions count output
+
+/-- Count cells with value 1 and place that many 2s in positions (0,0), (0,1), (0,2), (1,1). -/
+def countOnesAndPlaceTwosTransform : Transform Grid Grid :=
+  { name := "count-ones-place-twos"
+  , apply := fun grid => pure <| countOnesAndPlaceTwos grid }
+
 end CogitoCore.ARC.Transformations
