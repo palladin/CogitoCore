@@ -32,7 +32,9 @@ structure Example where
 -- Full task containing the mission name and its paired training examples.
 structure Task where
   name : String
-  examples : List Example
+  trainExamples : List Example
+  testExamples : List Example
+  deriving Repr
 
 -- Named transformation that maps one grid representation into another, possibly failing with a message.
 structure Transform (α : Type) (β : Type) where
@@ -55,27 +57,9 @@ def run : Program α ω → α → Except String ω
         let mid ← t.apply input
         run rest mid
 
-def validateExample (prog : Program Grid Grid) (ex : Example) : Except String Bool :=
-  do
-    let output ← run prog ex.input
-    pure <| output == ex.output
-
--- Validates a solution candidate by checking each program against its paired example.
-def validateTask (examples : List Example) (program : Program Grid Grid) : Except String Bool :=
-  match examples with
-  | [] => pure true
-  | ex :: rest => do
-      let valid ← validateExample program ex
-      if !valid then
-        return false
-      else
-        validateTask rest program
-
--- Certified pairing of a program with a task together with a proof that validation succeeds.
+-- Solution is a pairing of a program with a task
 structure Solution where
   program : Program Grid Grid
-  task : Task
-  isValid : validateTask task.examples program = .ok true
-
+  taskName : String
 
 end CogitoCore.ARC.Definitions

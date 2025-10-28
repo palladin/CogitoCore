@@ -1,13 +1,9 @@
 import CogitoCore.ARC.Definitions
-import CogitoCore.ARC.Tasks.«0d3d703e»
+import CogitoCore.ARC.Tasks.Solutions
 import Lean.Data.Json
 
 open CogitoCore.ARC.Definitions
 open Lean
-
-def solutions : List Solution :=
-  [ CogitoCore.ARC.Tasks.puzzle0d3d703eSolution
-  ]
 
 def cellOfNat? : Nat → Except String Cell
   | 0 => .ok .C0
@@ -42,49 +38,59 @@ def parseExample (j : Json) : Except String Example := do
   let output ← parseGrid outputJson
   pure { input := input, output := output }
 
-def parseExamples (root : Json) (field : String) : Except String (List Example) := do
-  let arrJson ← root.getObjVal? field
-  let arr ← arrJson.getArr?
+def parseExamplesArray (j : Json) : Except String (List Example) := do
+  let arr ← j.getArr?
   let exs ← arr.mapM parseExample
   pure exs.toList
 
-def loadTestExamples (taskName : String) : IO (Except String (List Example)) := do
+def parseTask (taskName : String) (root : Json) : Except String Task := do
+  let trainJson ← root.getObjVal? "train"
+  let testJson ← root.getObjVal? "test"
+  let train ← parseExamplesArray trainJson
+  let test ← parseExamplesArray testJson
+  pure { name := taskName, trainExamples := train, testExamples := test }
+
+def loadTask (taskName : String) : IO (Except String Task) := do
   let path := s!"data/training/{taskName}.json"
   try
     let contents ← IO.FS.readFile path
     match Json.parse contents with
     | .ok json =>
-        pure <| parseExamples json "test"
+        pure <| parseTask taskName json
     | .error err =>
         pure <| .error s!"failed to parse {path}: {err}"
   catch e =>
     pure <| .error s!"failed to read {path}: {e.toString}"
 
+def evaluateExamples (label : String) (program : Program Grid Grid) (examples : List Example) : IO Unit := do
+  if examples.isEmpty then
+    IO.println s!"  No {label} examples."
+  else
+    let rec loop (idx : Nat) : List Example → IO Unit
+    | [] => pure ()
+    | ex :: rest =>
+        match run program ex.input with
+        | .error err => do
+            IO.println s!"  {label} {idx + 1}: runtime error {err}"
+            loop (idx + 1) rest
+        | .ok actual => do
+            if actual == ex.output then
+              IO.println s!"  {label} {idx + 1}: passed"
+            else
+              IO.println s!"  {label} {idx + 1}: FAILED"
+              IO.println s!"    expected: {reprStr ex.output}"
+              IO.println s!"    actual:   {reprStr actual}"
+            loop (idx + 1) rest
+    loop 0 examples
+
 def evaluateSolution (sol : Solution) : IO Unit := do
-  IO.println s!"Evaluating task {sol.task.name}"
-  match ← loadTestExamples sol.task.name with
+  IO.println s!"Evaluating task {sol.taskName}"
+  match ← loadTask sol.taskName with
   | .error err =>
-      IO.eprintln s!"  Error loading tests: {err}"
-  | .ok tests =>
-      if tests.isEmpty then
-        IO.println "  No test cases available."
-      else
-        let rec go (idx : Nat) : List Example → IO Unit
-        | [] => pure ()
-        | ex :: rest =>
-            match run sol.program ex.input with
-            | .error err => do
-                IO.println s!"  Test {idx + 1}: runtime error {err}"
-                go (idx + 1) rest
-            | .ok actual => do
-                if actual == ex.output then
-                  IO.println s!"  Test {idx + 1}: passed"
-                else
-                  IO.println s!"  Test {idx + 1}: FAILED"
-                  IO.println s!"    expected: {reprStr ex.output}"
-                  IO.println s!"    actual:   {reprStr actual}"
-                go (idx + 1) rest
-        go 0 tests
+      IO.eprintln s!"  Error loading task: {err}"
+  | .ok task => do
+      evaluateExamples "Training" sol.program task.trainExamples
+      evaluateExamples "Test" sol.program task.testExamples
 
 def main : IO Unit := do
   for sol in solutions do
