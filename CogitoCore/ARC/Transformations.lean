@@ -82,6 +82,10 @@ private def incrementCount (counts : List (Cell × Nat)) (color : Cell) : List (
           (c, n) :: go rest
   go counts
 
+private def boolToNat : Bool → Nat
+  | true => 1
+  | false => 0
+
 private def maxCount (counts : List (Cell × Nat)) : Option (Cell × Nat) :=
   match counts with
   | [] => none
@@ -369,6 +373,37 @@ def compressSeparatorsTransform : Transform Grid Grid :=
   { name := "compress-separators"
   , apply := compressBySeparators }
 
+private def boundingBoxForColor (grid : Grid) (color : Cell) : Option (Nat × Nat × Nat × Nat) :=
+  let updateForCell
+      (acc : Option (Nat × Nat × Nat × Nat))
+      (rowIdx : Nat)
+      (colIdx : Nat)
+      (cell : Cell) : Option (Nat × Nat × Nat × Nat) :=
+    if cell == color then
+      match acc with
+      | none => some (rowIdx, rowIdx, colIdx, colIdx)
+      | some (minRow, maxRow, minCol, maxCol) =>
+          some
+            (Nat.min minRow rowIdx,
+             Nat.max maxRow rowIdx,
+             Nat.min minCol colIdx,
+             Nat.max maxCol colIdx)
+    else
+      acc
+  let updateForRow
+      (acc : Option (Nat × Nat × Nat × Nat))
+      (rowInfo : Nat × Array Cell)
+      : Option (Nat × Nat × Nat × Nat) :=
+    match rowInfo with
+    | (rowIdx, row) =>
+        List.foldl
+          (fun innerAcc cellInfo =>
+            match cellInfo with
+            | (colIdx, cell) => updateForCell innerAcc rowIdx colIdx cell)
+          acc
+          (enumerateArray row)
+  List.foldl updateForRow none (enumerateArray grid)
+
 private def boundingBox (grid : Grid) : Option (Nat × Nat × Nat × Nat) :=
   let updateForCell
       (acc : Option (Nat × Nat × Nat × Nat))
@@ -409,6 +444,93 @@ private def setCell (grid : Grid) (rowIdx colIdx : Nat) (color : Cell) : Grid :=
       | some _ =>
           let newRow := row.set! colIdx color
           grid.set! rowIdx newRow
+
+private def componentCoordinates (grid : Grid) (target : Cell) : List (List (Nat × Nat)) :=
+  let height := gridHeight grid
+  let width := gridWidth grid
+  let rec rowLoop (rowIdx : Nat) (visited : List (Nat × Nat)) (acc : List (List (Nat × Nat))) : List (List (Nat × Nat)) :=
+    if rowIdx ≥ height then
+      acc.reverse
+    else
+      let rec colLoop (colIdx : Nat) (visited : List (Nat × Nat)) (acc : List (List (Nat × Nat))) : (List (Nat × Nat)) × List (List (Nat × Nat)) :=
+        if colIdx ≥ width then
+          (visited, acc)
+        else
+          let hasTarget := cellAt grid rowIdx colIdx == target
+          let already := containsCoord visited rowIdx colIdx
+          if hasTarget && !already then
+            let component := exploreComponent grid target height width [(rowIdx, colIdx)] []
+            let visited := component ++ visited
+            colLoop (colIdx + 1) visited (component :: acc)
+          else
+            colLoop (colIdx + 1) visited acc
+      let (visited, acc) := colLoop 0 visited acc
+      rowLoop (rowIdx + 1) visited acc
+  rowLoop 0 [] []
+
+private def neighborContribution (component : List (Nat × Nat)) (row col : Nat) : Nat :=
+  let up :=
+    match row with
+    | 0 => 0
+    | Nat.succ rPred => boolToNat (containsCoord component rPred col)
+  let down := boolToNat (containsCoord component (row + 1) col)
+  let left :=
+    match col with
+    | 0 => 0
+    | Nat.succ cPred => boolToNat (containsCoord component row cPred)
+  let right := boolToNat (containsCoord component row (col + 1))
+  up + down + left + right
+
+private def componentNeighborScore (component : List (Nat × Nat)) : Nat :=
+  component.foldl
+    (fun acc coord =>
+      match coord with
+      | (row, col) => acc + neighborContribution component row col)
+    0
+
+private def componentHasCycle (component : List (Nat × Nat)) : Bool :=
+  let neighborScore := componentNeighborScore component
+  neighborScore ≥ component.length * 2
+
+private def setComponentColor (grid : Grid) (component : List (Nat × Nat)) (color : Cell) : Grid :=
+  component.foldl
+    (fun acc coord =>
+      match coord with
+      | (row, col) => setCell acc row col color)
+    grid
+
+private def recolorCyclicComponents (grid : Grid) (target replacement : Cell) : Grid :=
+  (componentCoordinates grid target).foldl
+    (fun acc component =>
+      if componentHasCycle component then
+        setComponentColor acc component replacement
+      else
+        acc)
+    grid
+
+private def recolorAdjacentCells (grid : Grid) (target anchor replacement : Cell) : Grid :=
+  match boundingBoxForColor grid anchor with
+  | none => grid
+  | some (minRow, maxRow, minCol, maxCol) =>
+      (enumerateArray grid).foldl
+        (fun acc rowInfo =>
+          match rowInfo with
+          | (rowIdx, row) =>
+              if (rowIdx < minRow) || (rowIdx > maxRow) then
+                acc
+              else
+                (enumerateArray row).foldl
+                  (fun inner cellInfo =>
+                    match cellInfo with
+                    | (colIdx, cell) =>
+                        if (colIdx < minCol) || (colIdx > maxCol) then
+                          inner
+                        else if cell == target then
+                          setCell inner rowIdx colIdx replacement
+                        else
+                          inner)
+                  acc)
+        grid
 
 private def listContainsNat (xs : List Nat) (value : Nat) : Bool :=
   xs.any fun entry => entry == value
@@ -660,6 +782,89 @@ def connectEightToTwoPathTransform : Transform Grid Grid :=
   { name := "connect-eight-two-path"
   , apply := fun grid => pure <| connectEightToTwoPath grid }
 
+private def rowIsZero (row : Array Cell) : Bool :=
+  row.all (fun cell => cell == Cell.C0)
+
+private def repeatPatternRows (grid : Grid) : Grid :=
+  match grid[0]? with
+  | none => grid
+  | some patternRow =>
+      let width := patternRow.size
+      if width == 0 then
+        grid
+      else
+        let rec loop : List (Nat × Array Cell) → Nat → Grid → Grid
+          | [], _, acc => acc
+          | (rowIdx, row) :: rest, colorIdx, acc =>
+              if rowIsZero row then
+                let patternIdx := colorIdx % width
+                match patternRow[patternIdx]? with
+                | some color =>
+                    let newRow := Array.replicate row.size color
+                    let acc := acc.set! rowIdx newRow
+                    loop rest (colorIdx + 1) acc
+                | none => loop rest colorIdx acc
+              else
+                loop rest colorIdx acc
+        loop (enumerateArray grid) 0 grid
+
+/-- Replace zero rows with uniform rows that cycle through the colors of the first row. -/
+def repeatPatternRowsTransform : Transform Grid Grid :=
+  { name := "repeat-pattern-rows"
+  , apply := fun grid => pure <| repeatPatternRows grid }
+
+private def cellAtInt (grid : Grid) (row col : Int) : Cell :=
+  if (row < 0) || (col < 0) then
+    Cell.C0
+  else
+    let rowNat := Int.toNat row
+    let colNat := Int.toNat col
+    cellAt grid rowNat colNat
+
+private def neighborhood3x3 (grid : Grid) (rowIdx colIdx : Nat) : Grid :=
+  let baseRow : Int := Int.ofNat rowIdx
+  let baseCol : Int := Int.ofNat colIdx
+  let offsets : List Int := [-1, 0, 1]
+  Array.mk <|
+    offsets.map fun dr =>
+      Array.mk <|
+        offsets.map fun dc =>
+          let targetRow := baseRow + dr
+          let targetCol := baseCol + dc
+          cellAtInt grid targetRow targetCol
+
+private def majorityColorInPatch (patch : Grid) : Option Cell :=
+  let counts :=
+    patch.toList.foldl
+      (fun acc row =>
+        row.toList.foldl
+          (fun acc cell =>
+            if (cell == Cell.C0) || (cell == Cell.C8) then
+              acc
+            else
+              incrementCount acc cell)
+          acc)
+      []
+  match maxCount counts with
+  | some (color, _) => some color
+  | none => none
+
+private def extractEightNeighborhood (grid : Grid) : Grid :=
+  match findCellPosition grid Cell.C8 with
+  | none => grid
+  | some (rowIdx, colIdx) =>
+      let patch := neighborhood3x3 grid rowIdx colIdx
+      let replacement :=
+        match majorityColorInPatch patch with
+        | some color => color
+        | none => Cell.C0
+      setCell patch 1 1 replacement
+
+/-- Crop the 3×3 neighborhood around the unique 8 and replace the centre with the surrounding dominant colour. -/
+def extractEightNeighborhoodTransform : Transform Grid Grid :=
+  { name := "extract-eight-neighborhood"
+  , apply := fun grid => pure <| extractEightNeighborhood grid }
+
 private def alignColumnUsingBase (base : Grid) (grid : Grid) (colIdx : Nat) (colColor : Cell) : Grid :=
   let height := base.size
   let rec loop (rowIdx : Nat) (acc : Grid) : Grid :=
@@ -704,6 +909,16 @@ def alignCrossSegmentsTransform : Transform Grid Grid :=
 def componentsToDiagonalTransform (target : Cell) : Transform Grid Grid :=
   { name := "components-to-diagonal"
   , apply := fun grid => pure <| componentsToDiagonal grid target }
+
+/-- Recolour each component of `target` that contains a cycle so that it becomes `replacement`. -/
+def recolorCyclicComponentsTransform (target replacement : Cell) : Transform Grid Grid :=
+  { name := "recolor-cyclic-components"
+  , apply := fun grid => pure <| recolorCyclicComponents grid target replacement }
+
+/-- Recolour every `target` cell that is orthogonally adjacent to an `anchor` cell. -/
+def recolorAdjacentCellsTransform (target anchor replacement : Cell) : Transform Grid Grid :=
+  { name := "recolor-adjacent-cells"
+  , apply := fun grid => pure <| recolorAdjacentCells grid target anchor replacement }
 
 private def paintIfZero (grid : Grid) (rowIdx colIdx : Nat) (color : Cell) : Grid :=
   match grid[rowIdx]? with

@@ -9,6 +9,10 @@ import CogitoCore.ARC.Tasks.«ba97ae07»
 import CogitoCore.ARC.Tasks.«d0f5fe59»
 import CogitoCore.ARC.Tasks.«c444b776»
 import CogitoCore.ARC.Tasks.«d4a91cb9»
+import CogitoCore.ARC.Tasks.«bd4472b8»
+import CogitoCore.ARC.Tasks.«5117e062»
+import CogitoCore.ARC.Tasks.«b2862040»
+import CogitoCore.ARC.Tasks.«32597951»
 import Lean.Data.Json
 
 open CogitoCore.ARC.Definitions
@@ -24,4 +28,8 @@ def solutions : List Solution :=
   , CogitoCore.ARC.Tasks.puzzled0f5fe59Solution
   , CogitoCore.ARC.Tasks.puzzlec444b776Solution
   , CogitoCore.ARC.Tasks.puzzled4a91cb9Solution
+  , CogitoCore.ARC.Tasks.puzzlebd4472b8Solution
+  , CogitoCore.ARC.Tasks.puzzle5117e062Solution
+  , CogitoCore.ARC.Tasks.puzzleb2862040Solution
+  , CogitoCore.ARC.Tasks.puzzle32597951Solution
   ]
