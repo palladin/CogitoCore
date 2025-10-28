@@ -93,12 +93,12 @@ private def maxCount (counts : List (Cell × Nat)) : Option (Cell × Nat) :=
       some <|
         rest.foldl
           (fun (best : Cell × Nat) entry =>
-            let (_, bestCount) := best
-            let (_, entryCount) := entry
-            if entryCount > bestCount then
-              entry
-            else
-              best)
+            match best, entry with
+            | (_, bestCount), (color, count) =>
+                if count > bestCount then
+                  (color, count)
+                else
+                  best)
           first
 
 private def majorityNonZeroColor (row : Array Cell) : Option Cell :=
@@ -259,7 +259,6 @@ private def dedupeConsecutiveLists : List (List Cell) → List (List Cell)
 
 private def removeConsecutiveDuplicateRows (grid : Grid) : Grid :=
   listsToGrid <| dedupeConsecutiveLists <| gridToLists grid
-
 private def transposeGrid (grid : Grid) : Grid :=
   match grid.toList with
   | [] => #[]
@@ -434,6 +433,22 @@ private def boundingBox (grid : Grid) : Option (Nat × Nat × Nat × Nat) :=
           acc
           (enumerateArray row)
   List.foldl updateForRow none (enumerateArray grid)
+
+private def cropBoundingBox (grid : Grid) : Grid :=
+  match boundingBox grid with
+  | none => grid
+  | some (minRow, maxRow, minCol, maxCol) =>
+      let height := maxRow + 1 - minRow
+      let width := maxCol + 1 - minCol
+      let rows := List.range height
+      let cols := List.range width
+      Array.mk <|
+        rows.map fun rowOffset =>
+          let rowIdx := minRow + rowOffset
+          Array.mk <|
+            cols.map fun colOffset =>
+              let colIdx := minCol + colOffset
+              cellAt grid rowIdx colIdx
 
 private def setCell (grid : Grid) (rowIdx colIdx : Nat) (color : Cell) : Grid :=
   match grid[rowIdx]? with
@@ -920,6 +935,78 @@ def recolorAdjacentCellsTransform (target anchor replacement : Cell) : Transform
   { name := "recolor-adjacent-cells"
   , apply := fun grid => pure <| recolorAdjacentCells grid target anchor replacement }
 
+/-- Crop a grid down to the bounding box that covers all non-zero cells. -/
+def cropBoundingBoxTransform : Transform Grid Grid :=
+  { name := "crop-bbox"
+  , apply := fun grid => pure <| cropBoundingBox grid }
+
+private def divisors (n : Nat) : List Nat :=
+  (List.range (n + 1)).filter fun p => (p > 0) && (n % p == 0)
+
+private def rowsRepeatWithPeriod (grid : Grid) (period : Nat) : Bool :=
+  let height := grid.size
+  (List.range height).all fun rowIdx =>
+    match grid[rowIdx]? with
+    | none => False
+    | some row =>
+        match grid[rowIdx % period]? with
+        | none => False
+        | some ref => row.toList == ref.toList
+
+private def gridRowPeriod (grid : Grid) : Nat :=
+  let height := grid.size
+  match divisors height |>.find? (rowsRepeatWithPeriod grid) with
+  | some period => period
+  | none => height
+
+private def columnsRepeatWithPeriod (grid : Grid) (period : Nat) : Bool :=
+  let height := grid.size
+  (List.range height).all fun rowIdx =>
+    match grid[rowIdx]? with
+    | none => False
+    | some row =>
+        let width := row.size
+        (List.range width).all fun colIdx =>
+          match row[colIdx]? , row[colIdx % period]? with
+          | some cell, some ref => cell == ref
+          | _, _ => False
+
+private def gridColumnPeriod (grid : Grid) : Nat :=
+  let width :=
+    match grid[0]? with
+    | none => 0
+    | some row => row.size
+  match divisors width |>.find? (columnsRepeatWithPeriod grid) with
+  | some period => period
+  | none => width
+
+private def extractTile (grid : Grid) (rows cols : Nat) : Grid :=
+  let rowIndices := List.range rows
+  Array.mk <|
+    rowIndices.map fun rowIdx =>
+      match grid[rowIdx]? with
+      | none => Array.mk []
+      | some row =>
+          let colIndices := List.range cols
+          Array.mk <|
+            colIndices.map fun colIdx =>
+              match row[colIdx]? with
+              | some cell => cell
+              | none => Cell.C0
+
+private def fundamentalTile (grid : Grid) : Grid :=
+  let rowPeriod := gridRowPeriod grid
+  let colPeriod := gridColumnPeriod grid
+  if rowPeriod == 0 || colPeriod == 0 then
+    grid
+  else
+    extractTile grid rowPeriod colPeriod
+
+/-- Extract the minimal tile that repeats to form the grid. -/
+def fundamentalTileTransform : Transform Grid Grid :=
+  { name := "fundamental-tile"
+  , apply := fun grid => pure <| fundamentalTile grid }
+
 private def paintIfZero (grid : Grid) (rowIdx colIdx : Nat) (color : Cell) : Grid :=
   match grid[rowIdx]? with
   | none => grid
@@ -932,6 +1019,101 @@ private def paintIfZero (grid : Grid) (rowIdx colIdx : Nat) (color : Cell) : Gri
             grid.set! rowIdx newRow
           else
             grid
+
+private def fillDiagonalSegment (grid : Grid)
+    (startRow startCol endRow endCol : Nat) (color : Cell) : Grid :=
+  let row1 : Int := Int.ofNat startRow
+  let col1 : Int := Int.ofNat startCol
+  let row2 : Int := Int.ofNat endRow
+  let col2 : Int := Int.ofNat endCol
+  let dRow := row2 - row1
+  let dCol := col2 - col1
+  let absRow := Int.natAbs dRow
+  let absCol := Int.natAbs dCol
+  if absRow == 0 && absCol == 0 then
+    grid
+  else if absRow != absCol then
+    grid
+  else
+    let stepRow : Int := if dRow ≥ 0 then 1 else -1
+    let stepCol : Int := if dCol ≥ 0 then 1 else -1
+    let steps := absRow
+    let offsets := List.range (steps + 1)
+    offsets.foldl
+      (fun acc offset =>
+        let offsetInt : Int := Int.ofNat offset
+        let row := row1 + offsetInt * stepRow
+        let col := col1 + offsetInt * stepCol
+        if (row < 0) || (col < 0) then
+          acc
+        else
+          let rowNat := Int.toNat row
+          let colNat := Int.toNat col
+          match acc[rowNat]? with
+          | none => acc
+          | some rowArr =>
+              match rowArr[colNat]? with
+              | none => acc
+              | some existing =>
+                  if existing == Cell.C0 then
+                    paintIfZero acc rowNat colNat color
+                  else
+                    acc)
+      grid
+
+private def collectColorCoords
+    (grid : Grid) : List (Cell × List (Nat × Nat)) :=
+  let pushCoord
+      (acc : List (Cell × List (Nat × Nat)))
+      (color : Cell)
+      (coord : Nat × Nat) : List (Cell × List (Nat × Nat)) :=
+    let rec go : List (Cell × List (Nat × Nat)) → List (Cell × List (Nat × Nat))
+      | [] => [(color, [coord])]
+      | (c, coords) :: rest =>
+          if c == color then
+            (c, coord :: coords) :: rest
+          else
+            (c, coords) :: go rest
+    go acc
+  (enumerateArray grid).foldl
+    (fun outerAcc entry =>
+      match entry with
+      | (rowIdx, row) =>
+          (enumerateArray row).foldl
+            (fun innerAcc cellEntry =>
+              match cellEntry with
+              | (colIdx, cell) =>
+                  if cell == Cell.C0 then
+                    innerAcc
+                  else
+                    pushCoord innerAcc cell (rowIdx, colIdx))
+            outerAcc)
+    []
+
+private def fillDiagonalsForColor (grid : Grid)
+    (color : Cell) (coords : List (Nat × Nat)) : Grid :=
+  let rec loop : List (Nat × Nat) → Grid → Grid
+    | [], acc => acc
+    | coord :: rest, acc =>
+        let acc :=
+          rest.foldl
+            (fun inner other =>
+              match coord, other with
+              | (sr, sc), (er, ec) => fillDiagonalSegment inner sr sc er ec color)
+            acc
+        loop rest acc
+  loop coords grid
+
+private def fillDiagonalSegments (grid : Grid) : Grid :=
+  (collectColorCoords grid).foldl
+    (fun acc entry =>
+      match entry with
+      | (color, coords) => fillDiagonalsForColor acc color coords)
+    grid
+
+def fillDiagonalSegmentsTransform : Transform Grid Grid :=
+  { name := "fill-diagonal-segments"
+  , apply := fun grid => pure <| fillDiagonalSegments grid }
 
 private def fillRowBetween (grid : Grid) (rowIdx startCol endCol : Nat) (color : Cell) : Grid :=
   let lo := startCol + 1
@@ -1101,5 +1283,101 @@ private def connectToUniformBlock (grid : Grid) : Grid :=
 def connectToUniformBlockTransform : Transform Grid Grid :=
   { name := "connect-uniform-block"
   , apply := fun grid => pure <| connectToUniformBlock grid }
+
+private def boundingBoxExcludingColor (grid : Grid) (ignore : Cell)
+    : Option (Nat × Nat × Nat × Nat) :=
+  let updateForCell
+      (acc : Option (Nat × Nat × Nat × Nat))
+      (rowIdx : Nat)
+      (colIdx : Nat)
+      (cell : Cell)
+      : Option (Nat × Nat × Nat × Nat) :=
+    if (cell == Cell.C0) || (cell == ignore) then
+      acc
+    else
+      match acc with
+      | none => some (rowIdx, rowIdx, colIdx, colIdx)
+      | some (minRow, maxRow, minCol, maxCol) =>
+          some
+            (Nat.min minRow rowIdx,
+             Nat.max maxRow rowIdx,
+             Nat.min minCol colIdx,
+             Nat.max maxCol colIdx)
+  let updateForRow
+      (acc : Option (Nat × Nat × Nat × Nat))
+      (rowInfo : Nat × Array Cell)
+      : Option (Nat × Nat × Nat × Nat) :=
+    match rowInfo with
+    | (rowIdx, row) =>
+        List.foldl
+          (fun inner cellInfo =>
+            match cellInfo with
+            | (colIdx, cell) => updateForCell inner rowIdx colIdx cell)
+          acc
+          (enumerateArray row)
+  List.foldl updateForRow none (enumerateArray grid)
+
+private def collectRelativeShapeCells (grid : Grid)
+    (minRow maxRow minCol maxCol : Nat) (ignore : Cell)
+    : List (Nat × Nat × Cell) :=
+  let height := maxRow + 1 - minRow
+  let width := maxCol + 1 - minCol
+  let rowIndices := List.range height
+  rowIndices.foldr
+    (fun relRow acc =>
+      let rowIdx := minRow + relRow
+      match grid[rowIdx]? with
+      | none => acc
+      | some row =>
+          let colIndices := List.range width
+          colIndices.foldr
+            (fun relCol inner =>
+              let colIdx := minCol + relCol
+              match row[colIdx]? with
+              | some cell =>
+                  if (cell == Cell.C0) || (cell == ignore) then
+                    inner
+                  else
+                    (relRow, relCol, cell) :: inner
+              | none => inner)
+            acc)
+    []
+
+private def copyShapeToAnchor (grid : Grid) : Grid :=
+  match findCellPosition grid Cell.C5 with
+  | none => grid
+  | some (anchorRow, anchorCol) =>
+      match boundingBoxExcludingColor grid Cell.C5 with
+      | none => grid
+      | some (minRow, maxRow, minCol, maxCol) =>
+          let height := maxRow + 1 - minRow
+          let width := maxCol + 1 - minCol
+          if height == 0 || width == 0 then
+            grid
+          else
+            let rowOffset := if height ≤ 1 then 0 else 1
+            let colOffset := if width ≤ 1 then 0 else 1
+            if (anchorRow < rowOffset) || (anchorCol < colOffset) then
+              grid
+            else
+              let topRow := anchorRow - rowOffset
+              let topCol := anchorCol - colOffset
+              let gridHeightVal := gridHeight grid
+              let gridWidthVal := gridWidth grid
+              if (topRow + height > gridHeightVal) || (topCol + width > gridWidthVal) then
+                grid
+              else
+                let cells := collectRelativeShapeCells grid minRow maxRow minCol maxCol Cell.C5
+                cells.foldl
+                  (fun acc entry =>
+                    match entry with
+                    | (relRow, relCol, color) =>
+                        setCell acc (topRow + relRow) (topCol + relCol) color)
+                  grid
+
+/-- Duplicate the primary pattern so that it overlays the anchor cell coloured 5. -/
+def copyShapeToAnchorTransform : Transform Grid Grid :=
+  { name := "copy-shape-to-anchor"
+  , apply := fun grid => pure <| copyShapeToAnchor grid }
 
 end CogitoCore.ARC.Transformations
