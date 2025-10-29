@@ -21,11 +21,11 @@ def evaluateExamples (label : String) (program : Program Grid Grid) (examples : 
       | [] => pure stats
       | ex :: rest =>
           match run program ex.input with
-          | .error err => do
+          | (Except.error err, _) => do
               IO.println s!"  {label} {idx + 1}: runtime error {err}"
               let stats := EvalStats.record stats false
               loop (idx + 1) stats rest
-          | .ok actual => do
+          | (Except.ok actual, _) => do
               if actual == ex.output then
                 IO.println s!"  {label} {idx + 1}: passed"
                 let stats := EvalStats.record stats true
