@@ -55,6 +55,7 @@ structure Task where
   testExamples : List Example
   deriving Repr
 
+-- Exception-aware runner that accumulates log messages.
 abbrev Runner α := Except String α × List String
 
 instance : Monad Runner where
@@ -65,6 +66,10 @@ instance : Monad Runner where
     | (Except.ok v, logs1) =>
         let (res, logs2) := f v
         (res, logs1 ++ logs2)
+
+-- Write a message to the runner log.
+def writeToLog (msg : String) : Runner Unit :=
+  (pure (), [msg])
 
 -- Named transformation that maps one grid representation into another, possibly failing with a message.
 structure Transform (α : Type) (β : Type) [Repr α] [Repr β] where
