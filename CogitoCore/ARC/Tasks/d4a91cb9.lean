@@ -6,11 +6,8 @@ open CogitoCore.ARC.Transformations
 
 namespace CogitoCore.ARC.Tasks
 
-def puzzled4a91cb9Program : Program Grid Grid :=
-  Program.last connectEightToTwoPathTransform
-
 def puzzled4a91cb9Solution : Solution :=
   { taskName := "d4a91cb9"
-  , program := puzzled4a91cb9Program }
+  , program := sorry }
 
 end CogitoCore.ARC.Tasks

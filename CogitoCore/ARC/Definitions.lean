@@ -19,9 +19,28 @@ inductive Cell where
   | C9
   deriving Repr, BEq
 
+instance : Repr Cell where
+  reprPrec c _ :=
+    match c with
+    | Cell.C0 => "0"
+    | Cell.C1 => "1"
+    | Cell.C2 => "2"
+    | Cell.C3 => "3"
+    | Cell.C4 => "4"
+    | Cell.C5 => "5"
+    | Cell.C6 => "6"
+    | Cell.C7 => "7"
+    | Cell.C8 => "8"
+    | Cell.C9 => "9"
 
 -- Rectangular grid stored as nested arrays.
 abbrev Grid := Array (Array Cell)
+
+instance : Repr Grid where
+  reprPrec g _ :=
+    let rows := g.toList.map (fun row => row.toList.map (fun c => toString (repr c)))
+    let rowStrs := rows.map (fun r => s!"[{", ".intercalate r}]")
+    s!"[{"\n ".intercalate rowStrs}]"
 
 -- Bundles the concrete grids for one training example.
 structure Example where

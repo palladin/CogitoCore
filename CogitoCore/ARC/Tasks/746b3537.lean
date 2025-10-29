@@ -6,12 +6,8 @@ open CogitoCore.ARC.Transformations
 
 namespace CogitoCore.ARC.Tasks
 
-def puzzle746b3537Program : Program Grid Grid :=
-  Program.step removeConsecutiveDuplicateColumnsTransform
-    (Program.last removeConsecutiveDuplicateRowsTransform)
-
 def puzzle746b3537Solution : Solution :=
   { taskName := "746b3537"
-  , program := puzzle746b3537Program }
+  , program := sorry }
 
 end CogitoCore.ARC.Tasks

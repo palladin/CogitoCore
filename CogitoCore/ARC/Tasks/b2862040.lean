@@ -6,11 +6,8 @@ open CogitoCore.ARC.Transformations
 
 namespace CogitoCore.ARC.Tasks
 
-def puzzleb2862040Program : Program Grid Grid :=
-  Program.last (recolorCyclicComponentsTransform Cell.C1 Cell.C8)
-
- def puzzleb2862040Solution : Solution :=
+def puzzleb2862040Solution : Solution :=
   { taskName := "b2862040"
-  , program := puzzleb2862040Program }
+  , program := sorry }
 
 end CogitoCore.ARC.Tasks

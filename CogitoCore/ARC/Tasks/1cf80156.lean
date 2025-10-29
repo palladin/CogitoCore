@@ -6,11 +6,8 @@ open CogitoCore.ARC.Transformations
 
 namespace CogitoCore.ARC.Tasks
 
-def puzzle1cf80156Program : Program Grid Grid :=
-  Program.last cropBoundingBoxTransform
-
 def puzzle1cf80156Solution : Solution :=
   { taskName := "1cf80156"
-  , program := puzzle1cf80156Program }
+  , program := sorry }
 
 end CogitoCore.ARC.Tasks

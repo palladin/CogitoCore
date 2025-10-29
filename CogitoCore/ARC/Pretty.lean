@@ -4,23 +4,8 @@ namespace CogitoCore.ARC.Pretty
 
 open CogitoCore.ARC.Definitions
 
-def cellToNat : Cell → Nat
-  | Cell.C0 => 0
-  | Cell.C1 => 1
-  | Cell.C2 => 2
-  | Cell.C3 => 3
-  | Cell.C4 => 4
-  | Cell.C5 => 5
-  | Cell.C6 => 6
-  | Cell.C7 => 7
-  | Cell.C8 => 8
-  | Cell.C9 => 9
-
 def dumpGrid (label : String) (grid : Grid) : IO Unit := do
-  IO.println label
-  for row in grid do
-    let rowVals := row.toList.map (fun cell => cellToNat cell)
-    IO.println s!"  {rowVals}"
+  IO.println s!"{label}\n{repr grid}"
 
 private def enumerateList {α} : List α → Nat → List (Nat × α)
   | [], _ => []
@@ -56,6 +41,6 @@ def printDiffs (diffs : List (Nat × Nat × Cell × Cell)) : IO Unit :=
   | [] => IO.println "no differences"
   | entries =>
       for (rowIdx, colIdx, expected, actual) in entries do
-        IO.println s!"row {rowIdx}, col {colIdx}: expected {cellToNat expected}, actual {cellToNat actual}"
+        IO.println s!"row {rowIdx}, col {colIdx}: expected {repr expected}, actual {repr actual}"
 
 end CogitoCore.ARC.Pretty

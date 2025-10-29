@@ -6,11 +6,8 @@ open CogitoCore.ARC.Transformations
 
 namespace CogitoCore.ARC.Tasks
 
-def puzzle1f876c06Program : Program Grid Grid :=
-  Program.last fillDiagonalSegmentsTransform
-
 def puzzle1f876c06Solution : Solution :=
   { taskName := "1f876c06"
-  , program := puzzle1f876c06Program }
+  , program := sorry }
 
 end CogitoCore.ARC.Tasks
