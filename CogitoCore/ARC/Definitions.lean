@@ -104,4 +104,20 @@ structure Solution where
   pipeline : Pipeline Grid Grid
   taskName : String
 
+-- Entity represents an object in the grid with a location, sub-parts, and background cells.
+structure Entity where
+  grid : Grid
+  location : (Nat × Nat)
+  parts : List Entity
+  background : List Cell
+  deriving Repr
+
+-- World encapsulates the state of the ARC grid along with auxiliary state information.
+structure World (σ : Type) where
+  state : σ
+  grid : Grid
+  entities : List Entity
+  background : List Cell
+  deriving Repr
+
 end CogitoCore.ARC.Definitions

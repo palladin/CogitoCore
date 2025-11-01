@@ -10,8 +10,19 @@ open CogitoCore.ARC.Definitions
 open CogitoCore.ARC.Pretty
 open CogitoCore.ARC.Parsing
 
+/-- Pretty-print collected pipeline logs with indentation. -/
+private def printLogs (logs : List String) : IO Unit := do
+  IO.println "    logs:"
+  let rec loop : List String → Nat → IO Unit
+    | [], _ => pure ()
+    | msg :: rest, idx => do
+        IO.println s!"      {idx}. {msg}"
+        loop rest (idx + 1)
+  loop logs 1
+
 /-- Evaluate a collection of examples for a program, reporting pass/fail details and returning stats. -/
-def evaluateExamples (label : String) (program : Pipeline Grid Grid) (examples : List Example) : IO EvalStats := do
+def evaluateExamples (label : String) (program : Pipeline Grid Grid) (examples : List Example)
+    (dumpLogsOnError : Bool) : IO EvalStats := do
   if examples.isEmpty then
     IO.println s!"  No {label} examples."
     pure EvalStats.zero
@@ -21,8 +32,10 @@ def evaluateExamples (label : String) (program : Pipeline Grid Grid) (examples :
       | [] => pure stats
       | ex :: rest =>
           match run program ex.input with
-          | (Except.error err, _) => do
+          | (Except.error err, logs) => do
               IO.println s!"  {label} {idx + 1}: runtime error {err}"
+              if dumpLogsOnError ∧ ¬ logs.isEmpty then
+                printLogs logs
               let stats := EvalStats.record stats false
               loop (idx + 1) stats rest
           | (Except.ok actual, _) => do
@@ -41,15 +54,15 @@ def evaluateExamples (label : String) (program : Pipeline Grid Grid) (examples :
     loop 0 EvalStats.zero examples
 
 /-- Evaluate a solution across its training and test sets, printing per-split summaries. -/
-def evaluateSolution (sol : Solution) : IO EvalStats := do
+def evaluateSolution (sol : Solution) (dumpLogsOnError : Bool := false) : IO EvalStats := do
   IO.println s!"Evaluating task {sol.taskName}"
   match ← loadTask sol.taskName with
   | .error err => do
       IO.eprintln s!"  Error loading task: {err}"
       pure EvalStats.zero
   | .ok task => do
-      let trainingStats ← evaluateExamples "Training" sol.pipeline task.trainExamples
-      let testStats ← evaluateExamples "Test" sol.pipeline task.testExamples
+      let trainingStats ← evaluateExamples "Training" sol.pipeline task.trainExamples dumpLogsOnError
+      let testStats ← evaluateExamples "Test" sol.pipeline task.testExamples dumpLogsOnError
       IO.println s!"  Training summary: {trainingStats.passed}/{trainingStats.total} passed"
       IO.println s!"  Test summary: {testStats.passed}/{testStats.total} passed"
       pure <| EvalStats.add trainingStats testStats
