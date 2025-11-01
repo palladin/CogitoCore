@@ -10,7 +10,7 @@ open CogitoCore.ARC.Evaluator
 
 def main (args : List String) : IO UInt32 := do
   IO.println s!"CogitoCore {CogitoCore.version} ARC Evaluation"
-  let (solutionsToRun, dumpLogsOnError, missing?) :=
+  let (solutionsToRun, dumpLogs, missing?) :=
     match args with
     | [] => (solutions, false, (none : Option String))
     | name :: _ =>
@@ -34,7 +34,7 @@ def main (args : List String) : IO UInt32 := do
         match remaining with
         | [] => pure (stats, tasksPassed)
         | sol :: rest => do
-            let result ← evaluateSolution sol (dumpLogsOnError := dumpLogsOnError)
+            let result ← evaluateSolution sol dumpLogs
             let stats := EvalStats.add stats result
             let tasksPassed := if result.passed == result.total then tasksPassed + 1 else tasksPassed
             loop rest stats tasksPassed
