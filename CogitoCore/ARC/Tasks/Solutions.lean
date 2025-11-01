@@ -24,8 +24,11 @@ import Lean.Data.Json
 
 open CogitoCore.ARC.Definitions
 
-def solutions : List Solution :=
-  [ CogitoCore.ARC.Tasks.puzzle0d3d703eSolution
+
+
+
+def solutions : List Solution := []
+/-  [ CogitoCore.ARC.Tasks.puzzle0d3d703eSolution
   , CogitoCore.ARC.Tasks.puzzle6f8cd79bSolution
   , CogitoCore.ARC.Tasks.puzzle11852cabSolution
   , CogitoCore.ARC.Tasks.puzzle746b3537Solution
@@ -47,3 +50,4 @@ def solutions : List Solution :=
   , CogitoCore.ARC.Tasks.puzzlebe94b721Solution
   , CogitoCore.ARC.Tasks.puzzle794b24beSolution
   ]
+-/

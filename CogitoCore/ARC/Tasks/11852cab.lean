@@ -6,8 +6,8 @@ open CogitoCore.ARC.Transformations
 
 namespace CogitoCore.ARC.Tasks
 
-def puzzle11852cabSolution : Solution :=
-  { taskName := "11852cab"
-  , program := sorry }
+-- def puzzle11852cabSolution : Solution :=
+--   { taskName := "11852cab"
+--   , pipeline := sorry }
 
 end CogitoCore.ARC.Tasks

@@ -1,3 +1,4 @@
+import CogitoCore
 import CogitoCore.ARC.Definitions
 import CogitoCore.ARC.Tasks.Solutions
 import CogitoCore.ARC.EvalStats
@@ -8,6 +9,7 @@ open CogitoCore.ARC.Definitions
 open CogitoCore.ARC.Evaluator
 
 def main : IO Unit := do
+  IO.println s!"CogitoCore {CogitoCore.version} ARC Evaluation"
   let totalTasks := solutions.length
   let rec loop (remaining : List Solution) (stats : EvalStats) (tasksPassed : Nat) : IO (EvalStats × Nat) :=
     match remaining with

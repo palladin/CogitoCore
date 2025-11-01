@@ -11,7 +11,7 @@ open CogitoCore.ARC.Pretty
 open CogitoCore.ARC.Parsing
 
 /-- Evaluate a collection of examples for a program, reporting pass/fail details and returning stats. -/
-def evaluateExamples (label : String) (program : Program Grid Grid) (examples : List Example) : IO EvalStats := do
+def evaluateExamples (label : String) (program : Pipeline Grid Grid) (examples : List Example) : IO EvalStats := do
   if examples.isEmpty then
     IO.println s!"  No {label} examples."
     pure EvalStats.zero
@@ -48,8 +48,8 @@ def evaluateSolution (sol : Solution) : IO EvalStats := do
       IO.eprintln s!"  Error loading task: {err}"
       pure EvalStats.zero
   | .ok task => do
-      let trainingStats ← evaluateExamples "Training" sol.program task.trainExamples
-      let testStats ← evaluateExamples "Test" sol.program task.testExamples
+      let trainingStats ← evaluateExamples "Training" sol.pipeline task.trainExamples
+      let testStats ← evaluateExamples "Test" sol.pipeline task.testExamples
       IO.println s!"  Training summary: {trainingStats.passed}/{trainingStats.total} passed"
       IO.println s!"  Test summary: {testStats.passed}/{testStats.total} passed"
       pure <| EvalStats.add trainingStats testStats

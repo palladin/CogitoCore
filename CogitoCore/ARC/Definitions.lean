@@ -68,8 +68,8 @@ instance : Monad Runner where
         (res, logs1 ++ logs2)
 
 -- Write a message to the runner log.
-def writeToLog (msg : String) : Runner Unit :=
-  (pure (), [msg])
+def writeToLog (msg : Std.Format) : Runner Unit :=
+  (pure (), [toString msg])
 
 -- Named transformation that maps one grid representation into another, possibly failing with a message.
 structure Transform (α : Type) (β : Type) [Repr α] [Repr β] where
@@ -80,27 +80,28 @@ instance [Repr α] [Repr β] : Repr (Transform α β) where
   reprPrec t _ := t.name
 
 -- Chains named transforms from an input grid to a desired output grid.
-inductive Program : Type → Type → Type _ where
-  | last : [Repr α] → [Repr ω] → Transform α ω → Program α ω
-  | step : [Repr α] → [Repr β] → Transform α β → Program β ω → Program α ω
+inductive Pipeline : Type → Type → Type _ where
+  | last : [Repr α] → [Repr ω] → Transform α ω → Pipeline α ω
+  | step : [Repr α] → [Repr β] → Transform α β → Pipeline β ω → Pipeline α ω
 
-def reprProgram : Program α ω → Std.Format
-  | Program.last t => s!"{t.name}"
-  | Program.step t rest => s!"{t.name} |> {reprProgram rest}"
+def reprPipeline : Pipeline α ω → Std.Format
+  | Pipeline.last t => s!"{t.name}"
+  | Pipeline.step t rest => s!"{t.name} |> {reprPipeline rest}"
 
-instance: Repr (Program α ω) where
-  reprPrec p _ := reprProgram p
+instance: Repr (Pipeline α ω) where
+  reprPrec p _ := reprPipeline p
 
--- Executes a program by threading intermediate results through each transform, surfacing the first failure.
-def run : Program α ω → α → Runner ω
-  | Program.last t, input => t.apply input
-  | Program.step t rest, input => do
+-- Executes a pipeline by threading intermediate results through each transform, surfacing the first failure.
+def run : Pipeline α ω → α → Runner ω
+  | Pipeline.last t, input => t.apply input
+  | Pipeline.step t rest, input => do
       let mid ← t.apply input
+      writeToLog <| repr mid
       run rest mid
 
--- Solution is a pairing of a program with a task
+-- Solution is a pairing of a pipeline with a task
 structure Solution where
-  program : Program Grid Grid
+  pipeline : Pipeline Grid Grid
   taskName : String
 
 end CogitoCore.ARC.Definitions
