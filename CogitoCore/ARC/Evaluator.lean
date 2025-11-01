@@ -21,7 +21,7 @@ private def printLogs (logs : List String) : IO Unit := do
   loop logs 1
 
 /-- Evaluate a collection of examples for a program, reporting pass/fail details and returning stats. -/
-def evaluateExamples (label : String) (program : Pipeline Grid Grid) (examples : List Example)
+def evaluateExamples (label : String) (solution : Solution) (examples : List Example)
     (dumpLogs : Bool) : IO EvalStats := do
   if examples.isEmpty then
     IO.println s!"  No {label} examples."
@@ -31,7 +31,7 @@ def evaluateExamples (label : String) (program : Pipeline Grid Grid) (examples :
       match remaining with
       | [] => pure stats
       | ex :: rest =>
-          match run program ex.input with
+          match runSolution solution ex.input with
           | (Except.error err, logs) => do
               IO.println s!"  {label} {idx + 1}: runtime error {err}"
               if dumpLogs ∧ ¬ logs.isEmpty then
@@ -65,8 +65,8 @@ def evaluateSolution (sol : Solution) (dumpLogs : Bool := false) : IO EvalStats 
       IO.eprintln s!"  Error loading task: {err}"
       pure EvalStats.zero
   | .ok task => do
-      let trainingStats ← evaluateExamples "Training" sol.pipeline task.trainExamples dumpLogs
-      let testStats ← evaluateExamples "Test" sol.pipeline task.testExamples dumpLogs
+      let trainingStats ← evaluateExamples "Training" sol task.trainExamples dumpLogs
+      let testStats ← evaluateExamples "Test" sol task.testExamples dumpLogs
       IO.println s!"  Training summary: {trainingStats.passed}/{trainingStats.total} passed"
       IO.println s!"  Test summary: {testStats.passed}/{testStats.total} passed"
       pure <| EvalStats.add trainingStats testStats

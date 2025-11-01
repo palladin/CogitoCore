@@ -6,19 +6,20 @@ namespace CogitoCore.ARC.Tasks
 
 namespace d4a91cb9
 
-private instance : Inhabited Cell := ⟨Cell.C0⟩
-private instance : Inhabited (Array Cell) := ⟨#[]⟩
-
 inductive ConnectorPhase where
   | vertical
   | horizontal
   | done
   deriving Repr, BEq
 
-structure ConnectorPlanState where
+structure ConnectorState where
+  grid : Grid
+  startColor : Cell
+  targetColor : Cell
+  pathColor : Cell
   startPos : Nat × Nat
   targetPos : Nat × Nat
-  pathColor : Cell
+  planned : Bool
   currentRow : Nat
   currentCol : Nat
   verticalIncrease : Bool
@@ -27,9 +28,20 @@ structure ConnectorPlanState where
   horizontalRemaining : Nat
   phase : ConnectorPhase
   pathCells : List (Nat × Nat)
-  startEntity : Entity
-  targetEntity : Entity
   deriving Repr
+
+private def gridSize (grid : Grid) : Nat × Nat :=
+  let rows := grid.size
+  let cols :=
+    match grid[0]? with
+    | some row => row.size
+    | none => 0
+  (rows, cols)
+
+private def updateWorld (state : ConnectorState) : World ConnectorState :=
+  { state := state
+  , size := gridSize state.grid
+  }
 
 private def setCell (grid : Grid) (row col : Nat) (value : Cell) : Grid :=
   if row < grid.size then
@@ -40,46 +52,6 @@ private def setCell (grid : Grid) (row col : Nat) (value : Cell) : Grid :=
       grid
   else
     grid
-
-private def buildEntityForCells (cells : List (Nat × Nat)) (color : Cell) : Option Entity :=
-  match cells with
-  | [] => none
-  | (r, c) :: rest =>
-      let init := (r, r, c, c)
-      let (minRow, maxRow, minCol, maxCol) :=
-        rest.foldl
-          (fun acc pos =>
-            let (minR, maxR, minC, maxC) := acc
-            let (row, col) := pos
-            (Nat.min minR row, Nat.max maxR row, Nat.min minC col, Nat.max maxC col))
-          init
-      let height := maxRow - minRow + 1
-      let width := maxCol - minCol + 1
-      let emptyRow := Array.replicate width Cell.C0
-      let baseGrid : Grid := Array.replicate height emptyRow
-      let filledGrid :=
-        cells.foldl
-          (fun g (row, col) =>
-            let localRow := row - minRow
-            let localCol := col - minCol
-            setCell g localRow localCol color)
-          baseGrid
-      some
-        { grid := filledGrid
-        , location := (minRow, minCol)
-        , parts := []
-        , background := []
-        }
-
-private def singletonEntity (pos : Nat × Nat) (color : Cell) : Entity :=
-  match buildEntityForCells [pos] color with
-  | some entity => entity
-  | none =>
-      { grid := #[]
-      , location := pos
-      , parts := []
-      , background := []
-      }
 
 private def positionsOfColor (grid : Grid) (target : Cell) : List (Nat × Nat) :=
   let (acc, _) :=
@@ -112,186 +84,164 @@ private def stepForward (increase : Bool) (value : Nat) : Nat :=
     | 0 => 0
     | Nat.succ k => k
 
-private def isEndpoint (state : ConnectorPlanState) (pos : Nat × Nat) : Bool :=
+private def isEndpoint (state : ConnectorState) (pos : Nat × Nat) : Bool :=
   decide (pos = state.startPos) || decide (pos = state.targetPos)
-
-private def entitiesFromState (state : ConnectorPlanState) : List Entity :=
-  match buildEntityForCells state.pathCells.reverse state.pathColor with
-  | some pathEntity => pathEntity :: state.startEntity :: [state.targetEntity]
-  | none => [state.startEntity, state.targetEntity]
 
 private def updatePhase (verticalRemaining horizontalRemaining : Nat) : ConnectorPhase :=
   if verticalRemaining > 0 then ConnectorPhase.vertical
   else if horizontalRemaining > 0 then ConnectorPhase.horizontal
   else ConnectorPhase.done
 
-def buildSingletonConnectorWorld
-    (startColor targetColor pathColor : Cell) : Transform Grid (World ConnectorPlanState) :=
-  { name := s!"plan connector {repr startColor}→{repr targetColor}"
-  , apply := fun grid =>
-      match findSingletonCell grid startColor with
+private def planConnector : Transform (World ConnectorState) (World ConnectorState) :=
+  { name := "plan connector"
+  , apply := fun world =>
+      let state := world.state
+      let grid := state.grid
+      match findSingletonCell grid state.startColor with
       | Except.error msg => (Except.error msg, [])
       | Except.ok startPos =>
-        match findSingletonCell grid targetColor with
+        match findSingletonCell grid state.targetColor with
         | Except.error msg => (Except.error msg, [])
         | Except.ok targetPos =>
             let startRow := startPos.fst
             let startCol := startPos.snd
             let targetRow := targetPos.fst
             let targetCol := targetPos.snd
-            let rowDiff := absDiff startRow targetRow
-            let colDiff := absDiff startCol targetCol
-            let horizontalRemaining := colDiff
-            let verticalRemaining := rowDiff
-            let verticalIncrease := startRow ≤ targetRow
-            let horizontalIncrease := startCol ≤ targetCol
-            let startEntity := singletonEntity startPos startColor
-            let targetEntity := singletonEntity targetPos targetColor
-            let phase := updatePhase verticalRemaining horizontalRemaining
-            let state : ConnectorPlanState :=
-              { startPos := startPos
-              , targetPos := targetPos
-              , pathColor := pathColor
-              , currentRow := startRow
-              , currentCol := startCol
-              , verticalIncrease := verticalIncrease
-              , verticalRemaining := verticalRemaining
-              , horizontalIncrease := horizontalIncrease
-              , horizontalRemaining := horizontalRemaining
-              , phase := phase
-              , pathCells := []
-              , startEntity := startEntity
-              , targetEntity := targetEntity
-              }
-            let world : World ConnectorPlanState :=
-              { state := state
-              , grid := grid
-              , entities := entitiesFromState state
-              , background := []
+            let verticalRemaining := absDiff startRow targetRow
+            let horizontalRemaining := absDiff startCol targetCol
+            let newState : ConnectorState :=
+              { state with
+                  startPos := startPos
+                  targetPos := targetPos
+                  planned := true
+                  currentRow := startRow
+                  currentCol := startCol
+                  verticalIncrease := startRow ≤ targetRow
+                  verticalRemaining := verticalRemaining
+                  horizontalIncrease := startCol ≤ targetCol
+                  horizontalRemaining := horizontalRemaining
+                  phase := updatePhase verticalRemaining horizontalRemaining
+                  pathCells := []
               }
             let msg :=
-              s!"planned connector ({repr pathColor}) vertical steps = {verticalRemaining}, horizontal steps = {horizontalRemaining}"
-            (Except.ok world, [toString msg])
+              s!"planned connector ({repr state.pathColor}) vertical steps = {verticalRemaining}, horizontal steps = {horizontalRemaining}"
+            (Except.ok (updateWorld newState), [toString msg])
   }
 
-def drawNextVerticalFrame : Transform (World ConnectorPlanState) (World ConnectorPlanState) :=
+private def drawNextVerticalFrame : Transform (World ConnectorState) (World ConnectorState) :=
   { name := "vertical frame"
   , apply := fun world =>
       let state := world.state
-      match state.phase with
-      | ConnectorPhase.vertical =>
-          match state.verticalRemaining with
-          | 0 =>
-              let newState :=
-                { state with phase := updatePhase 0 state.horizontalRemaining }
-              let updatedWorld : World ConnectorPlanState :=
-                { world with
-                    state := newState
-                    , entities := entitiesFromState newState
-                }
-              (Except.ok updatedWorld, ["vertical phase complete"])
-          | Nat.succ remaining =>
-              let nextRow := stepForward state.verticalIncrease state.currentRow
-              let nextCell := (nextRow, state.currentCol)
-              let paint := !isEndpoint state nextCell
-              let updatedGrid := if paint then setCell world.grid nextRow state.currentCol state.pathColor else world.grid
-              let newPathCells := if paint then nextCell :: state.pathCells else state.pathCells
-              let newPhase := updatePhase remaining state.horizontalRemaining
-              let newState :=
-                { state with
-                    currentRow := nextRow
-                    verticalRemaining := remaining
-                    phase := newPhase
-                    pathCells := newPathCells
-                }
-              let updatedWorld : World ConnectorPlanState :=
-                { world with
-                    grid := updatedGrid
-                    state := newState
-                    entities := entitiesFromState newState
-                }
-              (Except.ok updatedWorld, [s!"vertical frame drew {repr nextCell}"])
-      | _ =>
-          let updatedWorld : World ConnectorPlanState :=
-            { world with entities := entitiesFromState state }
-          (Except.ok updatedWorld, ["vertical frame idle"])
+      if ¬ state.planned then
+        (Except.ok world, ["vertical frame idle (unplanned)"])
+      else
+        match state.phase with
+        | ConnectorPhase.vertical =>
+            match state.verticalRemaining with
+            | 0 =>
+                let newState :=
+                  { state with phase := updatePhase 0 state.horizontalRemaining }
+                (Except.ok (updateWorld newState), ["vertical phase complete"])
+            | Nat.succ remaining =>
+                let nextRow := stepForward state.verticalIncrease state.currentRow
+                let nextCell := (nextRow, state.currentCol)
+                let paint := !isEndpoint state nextCell
+                let updatedGrid := if paint then setCell state.grid nextRow state.currentCol state.pathColor else state.grid
+                let newState :=
+                  { state with
+                      grid := updatedGrid
+                      currentRow := nextRow
+                      verticalRemaining := remaining
+                      phase := updatePhase remaining state.horizontalRemaining
+                      pathCells := if paint then nextCell :: state.pathCells else state.pathCells
+                  }
+                (Except.ok (updateWorld newState), [s!"vertical frame drew {repr nextCell}"])
+        | _ => (Except.ok world, ["vertical frame idle"])
   }
 
-def drawNextHorizontalFrame : Transform (World ConnectorPlanState) (World ConnectorPlanState) :=
+private def drawNextHorizontalFrame : Transform (World ConnectorState) (World ConnectorState) :=
   { name := "horizontal frame"
   , apply := fun world =>
       let state := world.state
-      match state.phase with
-      | ConnectorPhase.horizontal =>
-          match state.horizontalRemaining with
-          | 0 =>
-              let newState :=
-                { state with phase := ConnectorPhase.done }
-              let updatedWorld : World ConnectorPlanState :=
-                { world with
-                    state := newState
-                    entities := entitiesFromState newState
-                }
-              (Except.ok updatedWorld, ["horizontal phase complete"])
-          | Nat.succ remaining =>
-              let nextCol := stepForward state.horizontalIncrease state.currentCol
-              let nextCell := (state.currentRow, nextCol)
-              let paint := !isEndpoint state nextCell
-              let updatedGrid := if paint then setCell world.grid state.currentRow nextCol state.pathColor else world.grid
-              let newPathCells := if paint then nextCell :: state.pathCells else state.pathCells
-              let newPhase := updatePhase state.verticalRemaining remaining
-              let newState :=
-                { state with
-                    currentCol := nextCol
-                    horizontalRemaining := remaining
-                    phase := newPhase
-                    pathCells := newPathCells
-                }
-              let updatedWorld : World ConnectorPlanState :=
-                { world with
-                    grid := updatedGrid
-                    state := newState
-                    entities := entitiesFromState newState
-                }
-              (Except.ok updatedWorld, [s!"horizontal frame drew {repr nextCell}"])
-      | _ =>
-          let updatedWorld : World ConnectorPlanState :=
-            { world with entities := entitiesFromState state }
-          (Except.ok updatedWorld, ["horizontal frame idle"])
+      if ¬ state.planned then
+        (Except.ok world, ["horizontal frame idle (unplanned)"])
+      else
+        match state.phase with
+        | ConnectorPhase.horizontal =>
+            match state.horizontalRemaining with
+            | 0 =>
+                let newState :=
+                  { state with phase := ConnectorPhase.done }
+                (Except.ok (updateWorld newState), ["horizontal phase complete"])
+            | Nat.succ remaining =>
+                let nextCol := stepForward state.horizontalIncrease state.currentCol
+                let nextCell := (state.currentRow, nextCol)
+                let paint := !isEndpoint state nextCell
+                let updatedGrid := if paint then setCell state.grid state.currentRow nextCol state.pathColor else state.grid
+                let newState :=
+                  { state with
+                      grid := updatedGrid
+                      currentCol := nextCol
+                      horizontalRemaining := remaining
+                      phase := updatePhase state.verticalRemaining remaining
+                      pathCells := if paint then nextCell :: state.pathCells else state.pathCells
+                  }
+                (Except.ok (updateWorld newState), [s!"horizontal frame drew {repr nextCell}"])
+        | _ => (Except.ok world, ["horizontal frame idle"])
   }
 
-def connectorWorldToGrid : Transform (World ConnectorPlanState) Grid :=
-  { name := "emit connector grid"
+private def finalizeConnector : Transform (World ConnectorState) (World ConnectorState) :=
+  { name := "finalize connector"
   , apply := fun world =>
       let total := world.state.pathCells.length
-      (Except.ok world.grid, [s!"connector complete across {total} frames"])
+      (Except.ok world, [s!"connector complete across {total} frames"])
   }
 
 private def repeatWorldTransform
-    {ω : Type}
-    [Repr (World ConnectorPlanState)]
     (count : Nat)
-    (t : Transform (World ConnectorPlanState) (World ConnectorPlanState))
-    (tail : Pipeline (World ConnectorPlanState) ω) : Pipeline (World ConnectorPlanState) ω :=
+    (t : Transform (World ConnectorState) (World ConnectorState))
+    (tail : Pipeline (World ConnectorState) (World ConnectorState)) :
+    Pipeline (World ConnectorState) (World ConnectorState) :=
   match count with
   | 0 => tail
   | Nat.succ n => Pipeline.step t (repeatWorldTransform n t tail)
 
 def connectSingletonAnimated
-    (startColor targetColor pathColor : Cell)
-    (verticalFrames horizontalFrames : Nat) : Pipeline Grid Grid :=
-  let tail := repeatWorldTransform horizontalFrames drawNextHorizontalFrame (Pipeline.last connectorWorldToGrid)
+    (verticalFrames horizontalFrames : Nat) : Pipeline (World ConnectorState) (World ConnectorState) :=
+  let tail := repeatWorldTransform horizontalFrames drawNextHorizontalFrame (Pipeline.last finalizeConnector)
   let worldPipeline := repeatWorldTransform verticalFrames drawNextVerticalFrame tail
-  Pipeline.step (buildSingletonConnectorWorld startColor targetColor pathColor) worldPipeline
+  Pipeline.step planConnector worldPipeline
 
 end d4a91cb9
 
 open d4a91cb9
 
 def puzzled4a91cb9Solution : Solution :=
-  { taskName := "d4a91cb9"
-  , pipeline :=
-    connectSingletonAnimated Cell.C8 Cell.C2 Cell.C4 30 30
+  let startColor := Cell.C8
+  let targetColor := Cell.C2
+  let pathColor := Cell.C4
+  let initialStateFromGrid (grid : Grid) : ConnectorState :=
+    { grid := grid
+    , startColor := startColor
+    , targetColor := targetColor
+    , pathColor := pathColor
+    , startPos := (0, 0)
+    , targetPos := (0, 0)
+    , planned := false
+    , currentRow := 0
+    , currentCol := 0
+    , verticalIncrease := true
+    , verticalRemaining := 0
+    , horizontalIncrease := true
+    , horizontalRemaining := 0
+    , phase := ConnectorPhase.vertical
+    , pathCells := []
+    }
+  { σ := ConnectorState
+  , toGrid := fun world => world.state.grid
+  , toWorld := fun grid => updateWorld (initialStateFromGrid grid)
+  , pipeline := connectSingletonAnimated 30 30
+  , taskName := "d4a91cb9"
   }
 
 end CogitoCore.ARC.Tasks

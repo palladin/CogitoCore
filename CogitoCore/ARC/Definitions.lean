@@ -99,25 +99,25 @@ def run : Pipeline α ω → α → Runner ω
       writeToLog <| repr mid
       run rest mid
 
--- Solution is a pairing of a pipeline with a task
-structure Solution where
-  pipeline : Pipeline Grid Grid
-  taskName : String
-
--- Entity represents an object in the grid with a location, sub-parts, and background cells.
-structure Entity where
-  grid : Grid
-  location : (Nat × Nat)
-  parts : List Entity
-  background : List Cell
-  deriving Repr
-
--- World encapsulates the state of the ARC grid along with auxiliary state information.
+-- Abstract world representation parameterized by an internal state type.
 structure World (σ : Type) where
   state : σ
-  grid : Grid
-  entities : List Entity
-  background : List Cell
+  size : Nat × Nat
   deriving Repr
+
+-- Solution is a pairing of a pipeline with a task
+structure Solution where
+  σ : Type
+  toGrid : World σ → Grid
+  toWorld : Grid → World σ
+  pipeline : Pipeline (World σ) (World σ)
+  taskName : String
+
+-- Evaluates the solution pipeline on a given input grid, producing the output grid.
+def runSolution (solution : Solution) (input : Grid) : Runner Grid := do
+  let worldInput := solution.toWorld input
+  let worldOutput ← run solution.pipeline worldInput
+  pure (solution.toGrid worldOutput)
+
 
 end CogitoCore.ARC.Definitions
