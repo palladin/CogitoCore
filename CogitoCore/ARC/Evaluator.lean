@@ -31,7 +31,7 @@ def evaluateExamples (label : String) (solution : Solution) (examples : List Exa
       match remaining with
       | [] => pure stats
       | ex :: rest =>
-          match runSolution solution ex.input with
+          match runSolution (fuel := 1000) solution ex.input with
           | (Except.error err, logs) => do
               IO.println s!"  {label} {idx + 1}: runtime error {err}"
               if dumpLogs ∧ ¬ logs.isEmpty then

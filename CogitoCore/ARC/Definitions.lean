@@ -71,53 +71,52 @@ instance : Monad Runner where
 def writeToLog (msg : Std.Format) : Runner Unit :=
   (pure (), [toString msg])
 
--- Named transformation that maps one grid representation into another, possibly failing with a message.
-structure Transform (α : Type) (β : Type) [Repr α] [Repr β] where
-  name : String
-  apply : α → Runner β
-
-instance [Repr α] [Repr β] : Repr (Transform α β) where
-  reprPrec t _ := t.name
-
--- Chains named transforms from an input grid to a desired output grid.
-inductive Pipeline : Type → Type → Type _ where
-  | last : [Repr α] → [Repr ω] → Transform α ω → Pipeline α ω
-  | step : [Repr α] → [Repr β] → Transform α β → Pipeline β ω → Pipeline α ω
-
-def reprPipeline : Pipeline α ω → Std.Format
-  | Pipeline.last t => s!"{t.name}"
-  | Pipeline.step t rest => s!"{t.name} |> {reprPipeline rest}"
-
-instance: Repr (Pipeline α ω) where
-  reprPrec p _ := reprPipeline p
-
--- Executes a pipeline by threading intermediate results through each transform, surfacing the first failure.
-def run : Pipeline α ω → α → Runner ω
-  | Pipeline.last t, input => t.apply input
-  | Pipeline.step t rest, input => do
-      let mid ← t.apply input
-      writeToLog <| repr mid
-      run rest mid
 
 -- Abstract world representation parameterized by an internal state type.
 structure World (σ : Type) where
   state : σ
   size : Nat × Nat
-  deriving Repr
+
+inductive Result (σ : Type) where
+  | Done
+  | Next (world : World σ)
 
 -- Solution is a pairing of a pipeline with a task
 structure Solution where
   σ : Type
+  stateRepr : Repr σ
   toGrid : World σ → Grid
   toWorld : Grid → World σ
-  pipeline : Pipeline (World σ) (World σ)
+  stepTransform : World σ → Result σ
   taskName : String
 
+-- Executes a pipeline by threading intermediate results through each transform, surfacing the first failure.
+def run [stateRepr : Repr σ] (fuel : Nat) (stepTransform : World σ → Result σ) (world : World σ) : Runner (World σ) :=
+  let rec loop (fuel : Nat) (world : World σ) : Runner (World σ) :=
+    match fuel with
+    | 0 => do
+        writeToLog s!"last state = {repr world.state}"
+        let msg := s!"fuel exhausted before completion"
+        (Except.error msg, [])
+    | Nat.succ fuel' =>
+        match stepTransform world with
+        | Result.Done => do
+          writeToLog s!"Stepped to new world with state = {repr world.state}"
+          pure world
+        | Result.Next nextWorld => do
+          writeToLog s!"Stepped to new world with state = {repr nextWorld.state}"
+          loop fuel' nextWorld
+  loop fuel world
+
 -- Evaluates the solution pipeline on a given input grid, producing the output grid.
-def runSolution (solution : Solution) (input : Grid) : Runner Grid := do
-  let worldInput := solution.toWorld input
-  let worldOutput ← run solution.pipeline worldInput
-  pure (solution.toGrid worldOutput)
+def runSolution (fuel : Nat) (solution : Solution) (input : Grid) : Runner Grid := do
+  writeToLog s!"Running solution for input = {repr input}"
+  let startWorld := solution.toWorld input
+  let stateRepr : Repr solution.σ := solution.stateRepr
+  let finalWorld ← run (stateRepr := stateRepr) fuel solution.stepTransform startWorld
+  let output := solution.toGrid finalWorld
+  writeToLog s!"output = {repr output}"
+  pure output
 
 
 end CogitoCore.ARC.Definitions
