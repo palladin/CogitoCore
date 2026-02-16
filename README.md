@@ -144,24 +144,30 @@ distinct [x, y, z]       -- all values are different
 ## Project Structure
 
 ```
+SmtLibDsl.lean             -- Library entry point & version
+Main.lean                  -- CLI entry point (lists examples)
+lakefile.lean              -- Build configuration
 SmtLibDsl/
-├── SMT/
-│   ├── Expr.lean      -- Type-indexed SMT expressions
-│   ├── Cmd.lean       -- SMT commands & Smt monad
-│   ├── Compile.lean   -- Compile to SMT-LIB2
-│   ├── Solver.lean    -- Z3 integration
-│   └── Tensor.lean    -- Multi-dimensional tensor support
+├── SMT.lean               -- Module aggregator
+└── SMT/
+    ├── Expr.lean          -- Type-indexed SMT expressions
+    ├── Cmd.lean           -- SMT commands & Smt monad
+    ├── Compile.lean       -- Compile to SMT-LIB2
+    ├── Solver.lean        -- Z3 integration
+    └── Tensor.lean        -- Multi-dimensional tensor support
 Examples/
-├── Sudoku.lean        -- 9×9 Sudoku solver
-├── NQueens.lean       -- N-Queens puzzle
-├── MagicSquare.lean   -- Magic square solver
-├── Countdown.lean     -- Countdown numbers game
-├── Minesweeper.lean   -- Minesweeper auto-solver
-├── Sokoban.lean       -- Sokoban puzzle solver
-├── Life.lean          -- Conway's Game of Life
-└── Eternity2.lean     -- Edge-matching puzzle
+├── Sudoku.lean            -- 9×9 Sudoku solver
+├── NQueens.lean           -- N-Queens puzzle
+├── MagicSquare.lean       -- Magic square solver
+├── Countdown.lean         -- Countdown numbers game
+├── Minesweeper.lean       -- Minesweeper auto-solver
+├── Sokoban.lean           -- Sokoban puzzle solver
+├── SokobanLevels.lean     -- Original 90 Sokoban levels
+├── Slitherlink.lean       -- Slitherlink loop puzzle solver
+├── Life.lean              -- Conway's Game of Life
+└── Eternity2.lean         -- Edge-matching puzzle
 Tests/
-└── SMT.lean           -- Test suite
+└── SMT.lean               -- Test suite
 ```
 
 ## Examples
@@ -200,8 +206,17 @@ Iteratively deduces safe cells and mines using UNSAT queries.
 ```bash
 lake exe sokoban --list    # List available levels
 lake exe sokoban 2         # Solve level 2
+lake exe sokoban 2 30      # Solve level 2 with max 30 steps
 ```
 Finds move sequences to push boxes onto goals using state-space search.
+
+### Slitherlink
+```bash
+lake exe slitherlink                  # Run all configured puzzles
+lake exe slitherlink --list            # List available puzzles
+lake exe slitherlink -P online6        # Solve a specific puzzle
+```
+Draws a single closed loop satisfying clue counts using degree constraints and iterative subtour elimination.
 
 ## License
 

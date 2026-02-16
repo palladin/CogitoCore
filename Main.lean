@@ -16,6 +16,7 @@ def main (args : List String) : IO UInt32 := do
     IO.println "  lake exe countdown   - Countdown numbers game solver"
     IO.println "  lake exe magicsquare - Magic square solver"
     IO.println "  lake exe sokoban     - Sokoban puzzle solver"
+    IO.println "  lake exe slitherlink - Slitherlink loop puzzle solver"
     IO.println ""
     IO.println "Build and run:"
     IO.println "  lake build && lake exe <example>"
@@ -39,6 +40,8 @@ def main (args : List String) : IO UInt32 := do
     IO.println "Run: lake exe magicsquare"
   | "sokoban" =>
     IO.println "Run: lake exe sokoban"
+  | "slitherlink" =>
+    IO.println "Run: lake exe slitherlink"
   | _ =>
     IO.eprintln s!"Unknown example: {cmd}"
     IO.eprintln "Run 'lake exe smtlibdsl' for available examples."

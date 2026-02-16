@@ -46,3 +46,6 @@ lean_exe «magicsquare» where
 
 lean_exe «sokoban» where
   root := `Examples.Sokoban
+
+lean_exe «slitherlink» where
+  root := `Examples.Slitherlink
