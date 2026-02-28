@@ -16,7 +16,7 @@ deriving Repr, DecidableEq
 inductive SExpr where
   | atom (value : String)
   | list (items : List SExpr)
-deriving Repr
+deriving Repr, Inhabited
 
 namespace SExpr
 
@@ -120,12 +120,71 @@ def Ty.toSmtLib : Ty → String
 instance : ToString Ty where
   toString := Ty.toSmtLib
 
-/-- Map SMT types to corresponding Lean types -/
+inductive DatatypeValue where
+  | atom (value : String)
+  | node (name : String) (args : List DatatypeValue)
+deriving Repr, Inhabited
+
+namespace DatatypeValue
+
+partial def ofSExpr : SExpr → DatatypeValue
+  | .atom a => .atom a
+  | .list [] => .node "" []
+  | .list (.atom ctorName :: args) => .node ctorName (args.map ofSExpr)
+  | .list xs => .node "<app>" (xs.map ofSExpr)
+
+partial def toSExpr : DatatypeValue → SExpr
+  | .atom a => .atom a
+  | .node ctorName args => .list (.atom ctorName :: args.map toSExpr)
+
+instance : ToString DatatypeValue where
+  toString v := (toSExpr v).toSmtLib
+
+end DatatypeValue
+
+/-- Typed model value for SMT arrays, recursive in element value type. -/
+inductive ArrayValue (idxWidth : Nat) (elem : Type) where
+  | const : elem → ArrayValue idxWidth elem
+  | store : ArrayValue idxWidth elem → BitVec idxWidth → elem → ArrayValue idxWidth elem
+
+/-- Map SMT sorts to recursively typed Lean values. -/
 def Ty.LeanType : Ty → Type
   | Ty.bool => Bool
   | Ty.bitVec n => BitVec n
-  | Ty.array _ _ => SExpr
-  | Ty.datatype _ => SExpr
+  | Ty.array idxWidth elem => ArrayValue idxWidth (Ty.LeanType elem)
+  | Ty.datatype _ => DatatypeValue
+
+def DatatypeFieldValues : List DatatypeField → Type
+  | [] => PUnit
+  | f :: fs => Ty.LeanType f.ty × DatatypeFieldValues fs
+
+structure DatatypeValueOf (decl : DatatypeDecl) where
+  fields : DatatypeFieldValues decl.fields
+
+mutual
+
+partial def Ty.showValue : (ty : Ty) → ty.LeanType → String
+  | Ty.bool, b => match b with | true => "true" | false => "false"
+  | Ty.bitVec _, v => s!"{v.toNat}"
+  | Ty.array idxWidth elem, arr => ArrayValue.show idxWidth elem arr
+  | Ty.datatype _, v =>
+      let dv : DatatypeValue := by simpa using v
+      toString dv
+
+partial def ArrayValue.show (idxWidth : Nat) (elem : Ty) : ArrayValue idxWidth (Ty.LeanType elem) → String
+  | .const v => s!"const({Ty.showValue elem v})"
+  | .store base i v => s!"store({ArrayValue.show idxWidth elem base}, {i.toNat}, {Ty.showValue elem v})"
+
+end
+
+partial def showFieldValues : (fields : List DatatypeField) → DatatypeFieldValues fields → List String
+  | [], _ => []
+  | f :: fs, (v, rest) => s!"{f.name}: {Ty.showValue f.ty v}" :: showFieldValues fs rest
+
+instance : ToString (DatatypeValueOf decl) where
+  toString v :=
+    let fields := String.intercalate ", " (showFieldValues decl.fields v.fields)
+    decl.constructor ++ "{" ++ fields ++ "}"
 
 /-- Compile a datatype declaration to SMT-LIB2 syntax. -/
 def DatatypeDecl.toSmtLib (decl : DatatypeDecl) : String :=
@@ -181,20 +240,60 @@ def parseBitVec (s : String) (n : Nat) : Option (BitVec n) :=
     -- Try decimal
     s.toNat? |>.map (BitVec.ofNat n)
 
-/-- Parse an SMT-LIB value string to the corresponding Lean type -/
-def Ty.parse (ty : Ty) (s : String) : Option ty.LeanType :=
-  match ty with
-  | Ty.bool => parseBool s
-  | Ty.bitVec n => parseBitVec s n
-  | Ty.array _ _ => SExpr.parse s
-  | Ty.datatype _ => SExpr.parse s
+mutual
 
-/-- Parse only array/datatype values into generic S-expressions. -/
-def Ty.parseAsSExpr? (ty : Ty) (s : String) : Option SExpr :=
-  match ty with
-  | Ty.array _ _ => SExpr.parse s
-  | Ty.datatype _ => SExpr.parse s
+/-- Parse an already-parsed SMT S-expression into a recursively typed Lean value. -/
+partial def Ty.parseSExpr : (ty : Ty) → SExpr → Option ty.LeanType
+  | Ty.bool, .atom "true" => some true
+  | Ty.bool, .atom "false" => some false
+  | Ty.bool, _ => none
+  | Ty.bitVec n, .atom s => parseBitVec s n
+  | Ty.bitVec _, _ => none
+  | Ty.array idxWidth elem, sexpr => ArrayValue.parseSExpr idxWidth elem sexpr
+  | Ty.datatype _, sexpr => some (DatatypeValue.ofSExpr sexpr)
+
+partial def ArrayValue.parseSExpr (idxWidth : Nat) (elem : Ty) : SExpr → Option (ArrayValue idxWidth (Ty.LeanType elem))
+  | .list [(.list [(.atom "as"), (.atom "const"), _]), v] => do
+      let val ← Ty.parseSExpr elem v
+      pure (.const val)
+  | .list [(.atom "store"), base, i, v] => do
+      let baseVal ← ArrayValue.parseSExpr idxWidth elem base
+      let idxVal ← Ty.parseSExpr (Ty.bitVec idxWidth) i
+      let val ← Ty.parseSExpr elem v
+      pure (.store baseVal idxVal val)
   | _ => none
+
+end
+
+partial def parseFieldValuesSExpr : (fields : List DatatypeField) → List SExpr → Option (DatatypeFieldValues fields)
+  | [], [] => some PUnit.unit
+  | f :: fs, arg :: rest => do
+      let v ← Ty.parseSExpr f.ty arg
+      let restVals ← parseFieldValuesSExpr fs rest
+      pure (v, restVals)
+  | _, _ => none
+
+def DatatypeDecl.parseValueSExpr (decl : DatatypeDecl) (sexpr : SExpr) : Option (DatatypeValueOf decl) :=
+  match sexpr with
+  | .list (.atom ctor :: args) =>
+      if ctor == decl.constructor then
+        parseFieldValuesSExpr decl.fields args |>.map (fun fields => ⟨fields⟩)
+      else
+        none
+  | _ => none
+
+def DatatypeDecl.parseValue (decl : DatatypeDecl) (s : String) : Option (DatatypeValueOf decl) :=
+  SExpr.parse s >>= decl.parseValueSExpr
+
+/-- Parse an SMT-LIB value string to the corresponding Lean type. -/
+def Ty.parse (ty : Ty) (s : String) : Option ty.LeanType :=
+  do
+    let sexpr ← SExpr.parse s
+    ty.parseSExpr sexpr
+
+/-- Parse an SMT-LIB value as a typed array value. -/
+def Ty.parseArray? (idxWidth : Nat) (elem : Ty) (s : String) : Option (ArrayValue idxWidth (Ty.LeanType elem)) :=
+  Ty.parse (Ty.array idxWidth elem) s
 
 /-- Expressions indexed by sort, ensuring width-correctness at compile time -/
 inductive Expr : Ty → Type where

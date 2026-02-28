@@ -66,11 +66,6 @@ def declareVar (name : String) (ty : Ty) : Smt (Expr ty) :=
 def declareDatatype (decl : DatatypeDecl) : Smt Unit :=
   Smt.bind (Cmd.declareDatatype decl) Smt.pure
 
-/-- Declare a datatype sort and return the same declaration as a handle for safe downstream use. -/
-def declareDatatypeSafe (decl : DatatypeDecl) : Smt DatatypeDecl := do
-  declareDatatype decl
-  pure decl
-
 /-- Declare a constant of a datatype sort. -/
 def declareDatatypeConst (name : String) (datatypeName : String) : Smt (Expr (Ty.datatype datatypeName)) :=
   Smt.bind (Cmd.declareConst name (Ty.datatype datatypeName)) Smt.pure

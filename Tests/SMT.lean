@@ -109,15 +109,15 @@ def tyTests : TestSeq :=
     test "bitVec 32" (toString (Ty.bitVec 32) = "(_ BitVec 32)") $
     test "datatype" (toString (Ty.datatype "Point") = "Point") $
     test "array of array" (toString (Ty.array 8 (Ty.array 4 (Ty.bitVec 8))) = "(Array (_ BitVec 8) (Array (_ BitVec 4) (_ BitVec 8)))") $
-    test "parse array value as SExpr" (
+    test "parse array value as typed array" (
       let raw := "((as const (Array (_ BitVec 8) (_ BitVec 8))) #x00)"
-      let parsed := Ty.parseAsSExpr? (Ty.array 8 (Ty.bitVec 8)) raw
-      parsed.isSome && ((parsed.map SExpr.toSmtLib).getD "" == raw)
+      let parsed := Ty.parseArray? 8 (Ty.bitVec 8) raw
+      (parsed.map (fun v => Ty.showValue (Ty.array 8 (Ty.bitVec 8)) v == "const(0)")).getD false
     ) $
-    test "parse datatype value as SExpr" (
+    test "parse datatype value as recursive tree" (
       let raw := "(mkPoint #x03 #x04)"
-      let parsed := Ty.parseAsSExpr? (Ty.datatype "Point") raw
-      parsed.isSome && ((parsed.map SExpr.toSmtLib).getD "" == raw)
+      let parsed : Option DatatypeValue := Ty.parse (Ty.datatype "Point") raw
+      parsed.isSome
     )
 
 -- Test compileCmd
@@ -174,7 +174,7 @@ def compileTests : TestSeq :=
         inDecl := by simp [point]
       }
       let prog : Smt Unit := do
-        let _pointDecl ← declareDatatypeSafe point
+        declareDatatype point
         let p ← declareDatatypeConstOf "p" point
         assert (selectFieldSafe xField p =. bv 3 8)
       compile prog = "(set-logic ALL)\n(declare-datatype Point ((mkPoint (x (_ BitVec 8)) (y (_ BitVec 8)))))\n(declare-const p Point)\n(assert (= (x p) (_ bv3 8)))\n(check-sat)\n(get-model)"

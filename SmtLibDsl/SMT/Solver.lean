@@ -19,6 +19,11 @@ def Model.get (m : Model vars) (name : String) (ty : Ty)
     (_h : (name, ty) ∈ vars := by decide) : Option ty.LeanType :=
   m.raw.lookup name >>= ty.parse
 
+/-- Get a datatype value using its declaration for fully typed field decoding. -/
+def Model.getDatatype (m : Model vars) (name : String) (decl : DatatypeDecl)
+    (_h : (name, Ty.datatype decl.name) ∈ vars := by decide) : Option (DatatypeValueOf decl) :=
+  m.raw.lookup name >>= decl.parseValue
+
 instance : ToString (Model vars) where
   toString m := toString m.raw
 
