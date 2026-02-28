@@ -29,7 +29,7 @@ def W : Nat := 16
 abbrev BV := Expr (Ty.bitVec W)
 
 /-- Type alias for array expressions (stack) -/
-abbrev Stack := Expr (Ty.array W (ElemTy.bitVec W))
+abbrev Stack := Expr (Ty.array W (Ty.bitVec W))
 
 /-! ## SMT Helpers -/
 
@@ -113,7 +113,7 @@ def evalRec (ops : List (BV × BV)) (target : BV) (sp : BV) (st : Stack) (idx : 
 
     -- Declare a fresh array variable and assert it equals the computed stack
     -- This prevents exponential blowup by using the variable in recursion
-    let st' ← declareArray s!"st_{idx}" W (ElemTy.bitVec W)
+    let st' ← declareArray s!"st_{idx}" W (Ty.bitVec W)
     assert (st' =.ₐ stExpr)
 
     -- Stack pointer must stay positive
@@ -197,7 +197,7 @@ def countdown (nums : List Int) (target : Int) (numInstrs : Nat) : Smt Unit := d
 
   -- Initial state: sp = 0, empty stack
   let sp₀ ← declareBV "sp_init" W
-  let st₀ ← declareArray "st_init" W (ElemTy.bitVec W)
+  let st₀ ← declareArray "st_init" W (Ty.bitVec W)
   assert (sp₀ =. zero)
 
   -- Assert evaluation constraint

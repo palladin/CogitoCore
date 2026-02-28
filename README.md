@@ -89,7 +89,7 @@ lake exe smtlibdsl-test
 ```lean
 let x ← declareBV "x" 8           -- 8-bit bitvector
 let b ← declareBool "b"           -- Boolean
-let arr ← declareArray "a" 8 (ElemTy.bitVec 16)  -- Array
+let arr ← declareArray "a" 8 (Ty.bitVec 16)  -- Array
 let grid ← declareBVTensor "cell" [9, 9] 4       -- 9×9 tensor of 4-bit values
 ```
 

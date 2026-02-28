@@ -72,15 +72,32 @@ def compileExpr : Expr ty → String
   | .arrEq l r => s!"(= {compileExpr l} {compileExpr r})"
   -- Distinct constraint
   | .distinctBV _ names => s!"(distinct {names |> String.intercalate " "})"
+  -- Datatype field selector
+  | .dtSelect field _ rec => s!"({field} {compileExpr rec})"
+
+/-- Check whether a type uses datatype theory. -/
+def Ty.usesDatatype : Ty → Bool
+  | .datatype _ => true
+  | .array _ elem => elem.usesDatatype
+  | .bool | .bitVec _ => false
+
+/-- Check whether an SMT program uses datatype declarations/sorts. -/
+partial def Smt.usesDatatype : Smt α → Bool
+  | .pure _ => false
+  | .bind (.declareDatatype _) _ => true
+  | .bind (.declareConst name ty) f => ty.usesDatatype || usesDatatype (f (.var name ty))
+  | .bind (.assert _) f => usesDatatype (f ())
 
 /-- Compile a command, returning the result value and SMT-LIB2 string -/
 def compileCmd : Cmd α → (α × String)
+  | .declareDatatype decl => ((), decl.toSmtLib)
   | .declareConst name s => (.var name s, s!"(declare-const {name} {s})")
   | .assert e => ((), s!"(assert {compileExpr e})")
 
 /-- Compile an Smt program to SMT-LIB2 string (with QF_ABV logic for arrays + bitvectors) -/
 partial def compile (smt : Smt Unit) : String :=
-  "(set-logic QF_ABV)\n" ++ compileBody smt ++ "\n(check-sat)\n(get-model)"
+  let logic := if smt.usesDatatype then "ALL" else "QF_ABV"
+  s!"(set-logic {logic})\n{compileBody smt}\n(check-sat)\n(get-model)"
 where
   compileBody : Smt Unit → String
     | .pure () => ""

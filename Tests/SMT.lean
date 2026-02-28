@@ -72,19 +72,69 @@ def compileExprTests : TestSeq :=
     test "bvUMulO" (compileExpr (Expr.bvUMulO (bv 20 8) (bv 20 8)) = "(bvumulo (_ bv20 8) (_ bv20 8))") $
     test "bvSMulO" (compileExpr (Expr.bvSMulO (bv 20 8) (bv 20 8)) = "(bvsmulo (_ bv20 8) (_ bv20 8))") $
     -- Distinct constraint
-    test "distinctBV" (compileExpr (Expr.distinctBV 8 ["x", "y", "z"]) = "(distinct x y z)")
+    test "distinctBV" (compileExpr (Expr.distinctBV 8 ["x", "y", "z"]) = "(distinct x y z)") $
+    -- Datatype selectors
+    test "datatype selector" (
+      let p : Expr (Ty.datatype "Point") := Expr.var "p" (Ty.datatype "Point")
+      compileExpr (selectField "x" (Ty.bitVec 8) p) = "(x p)"
+    ) $
+    test "datatype selector safe" (
+      let point : DatatypeDecl := {
+        name := "Point"
+        constructor := "mkPoint"
+        fields := [
+          { name := "x", ty := Ty.bitVec 8 },
+          { name := "y", ty := Ty.bitVec 8 }
+        ]
+      }
+      let p : Expr (Ty.datatype point.name) := Expr.var "p" (Ty.datatype point.name)
+      let xField : DatatypeFieldRef point := {
+        field := { name := "x", ty := Ty.bitVec 8 }
+        inDecl := by simp [point]
+      }
+      compileExpr (selectFieldSafe xField p) = "(x p)"
+    ) $
+    test "nested const array" (
+      let inner : Expr (Ty.array 4 (Ty.bitVec 8)) := constArray 4 (Ty.bitVec 8) (bv 0 8)
+      let outer : Expr (Ty.array 8 (Ty.array 4 (Ty.bitVec 8))) := constArray 8 (Ty.array 4 (Ty.bitVec 8)) inner
+      compileExpr outer =
+        "((as const (Array (_ BitVec 8) (Array (_ BitVec 4) (_ BitVec 8)))) ((as const (Array (_ BitVec 4) (_ BitVec 8))) (_ bv0 8)))"
+    )
 
 -- Test Ty ToString
 def tyTests : TestSeq :=
   group "Ty.toString" $
     test "bool" (toString Ty.bool = "Bool") $
     test "bitVec 8" (toString (Ty.bitVec 8) = "(_ BitVec 8)") $
-    test "bitVec 32" (toString (Ty.bitVec 32) = "(_ BitVec 32)")
+    test "bitVec 32" (toString (Ty.bitVec 32) = "(_ BitVec 32)") $
+    test "datatype" (toString (Ty.datatype "Point") = "Point") $
+    test "array of array" (toString (Ty.array 8 (Ty.array 4 (Ty.bitVec 8))) = "(Array (_ BitVec 8) (Array (_ BitVec 4) (_ BitVec 8)))") $
+    test "parse array value as SExpr" (
+      let raw := "((as const (Array (_ BitVec 8) (_ BitVec 8))) #x00)"
+      let parsed := Ty.parseAsSExpr? (Ty.array 8 (Ty.bitVec 8)) raw
+      parsed.isSome && ((parsed.map SExpr.toSmtLib).getD "" == raw)
+    ) $
+    test "parse datatype value as SExpr" (
+      let raw := "(mkPoint #x03 #x04)"
+      let parsed := Ty.parseAsSExpr? (Ty.datatype "Point") raw
+      parsed.isSome && ((parsed.map SExpr.toSmtLib).getD "" == raw)
+    )
 
 -- Test compileCmd
 def compileCmdTests : TestSeq :=
   group "compileCmd" $
-    test "declareConst" ((compileCmd (Cmd.declareConst "x" (Ty.bitVec 8))).2 = "(declare-const x (_ BitVec 8))")
+    test "declareConst" ((compileCmd (Cmd.declareConst "x" (Ty.bitVec 8))).2 = "(declare-const x (_ BitVec 8))") $
+    test "declareDatatype" (
+      let point : DatatypeDecl := {
+        name := "Point"
+        constructor := "mkPoint"
+        fields := [
+          { name := "x", ty := Ty.bitVec 8 },
+          { name := "y", ty := Ty.bitVec 8 }
+        ]
+      }
+      (compileCmd (Cmd.declareDatatype point)).2 = "(declare-datatype Point ((mkPoint (x (_ BitVec 8)) (y (_ BitVec 8)))))"
+    )
 
 -- Test full program compilation
 def compileTests : TestSeq :=
@@ -94,6 +144,50 @@ def compileTests : TestSeq :=
         let x ← declareBV "x" 8
         assert (x =. bv 5 8)
       compile prog = "(set-logic QF_ABV)\n(declare-const x (_ BitVec 8))\n(assert (= x (_ bv5 8)))\n(check-sat)\n(get-model)"
+    ) $
+    test "datatype program" (
+      let point : DatatypeDecl := {
+        name := "Point"
+        constructor := "mkPoint"
+        fields := [
+          { name := "x", ty := Ty.bitVec 8 },
+          { name := "y", ty := Ty.bitVec 8 }
+        ]
+      }
+      let prog : Smt Unit := do
+        declareDatatype point
+        let p ← declareDatatypeConst "p" "Point"
+        assert (selectField "x" (Ty.bitVec 8) p =. bv 3 8)
+      compile prog = "(set-logic ALL)\n(declare-datatype Point ((mkPoint (x (_ BitVec 8)) (y (_ BitVec 8)))))\n(declare-const p Point)\n(assert (= (x p) (_ bv3 8)))\n(check-sat)\n(get-model)"
+    ) $
+    test "datatype program safe" (
+      let point : DatatypeDecl := {
+        name := "Point"
+        constructor := "mkPoint"
+        fields := [
+          { name := "x", ty := Ty.bitVec 8 },
+          { name := "y", ty := Ty.bitVec 8 }
+        ]
+      }
+      let xField : DatatypeFieldRef point := {
+        field := { name := "x", ty := Ty.bitVec 8 }
+        inDecl := by simp [point]
+      }
+      let prog : Smt Unit := do
+        let _pointDecl ← declareDatatypeSafe point
+        let p ← declareDatatypeConstOf "p" point
+        assert (selectFieldSafe xField p =. bv 3 8)
+      compile prog = "(set-logic ALL)\n(declare-datatype Point ((mkPoint (x (_ BitVec 8)) (y (_ BitVec 8)))))\n(declare-const p Point)\n(assert (= (x p) (_ bv3 8)))\n(check-sat)\n(get-model)"
+    ) $
+    test "nested array program" (
+      let prog : Smt Unit := do
+        let a ← declareArray "a" 8 (Ty.array 4 (Ty.bitVec 8))
+        let i ← declareBV "i" 8
+        let j ← declareBV "j" 4
+        let row := selectArr a i
+        let cell := selectArr row j
+        assert (cell =. bv 3 8)
+      compile prog = "(set-logic QF_ABV)\n(declare-const a (Array (_ BitVec 8) (Array (_ BitVec 4) (_ BitVec 8))))\n(declare-const i (_ BitVec 8))\n(declare-const j (_ BitVec 4))\n(assert (= (select (select a i) j) (_ bv3 8)))\n(check-sat)\n(get-model)"
     )
 
 -- All tests

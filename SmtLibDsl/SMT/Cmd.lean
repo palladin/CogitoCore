@@ -12,6 +12,7 @@ abbrev VarSchema := List (String × Ty)
 
 /-- SMT-LIB commands for QF_BV theory -/
 inductive Cmd : Type → Type _ where
+  | declareDatatype : DatatypeDecl → Cmd Unit
   | declareConst : String → (ty : Ty) → Cmd (Expr ty)
   | assert       : Expr Ty.bool → Cmd Unit
 
@@ -33,6 +34,7 @@ instance : Monad Smt where
 /-- Extract the variable schema from an Smt program -/
 def Smt.schema : Smt α → VarSchema
   | .pure _ => []
+  | .bind (.declareDatatype _) f => schema (f ())
   | .bind (.declareConst name ty) f =>
     (name, ty) :: schema (f (.var name ty))
   | .bind (.assert _) f => schema (f ())
@@ -60,6 +62,23 @@ def indexedName (base : String) (indices : List Nat) : String :=
 def declareVar (name : String) (ty : Ty) : Smt (Expr ty) :=
   Smt.bind (Cmd.declareConst name ty) Smt.pure
 
+/-- Declare a datatype sort with one constructor and named fields. -/
+def declareDatatype (decl : DatatypeDecl) : Smt Unit :=
+  Smt.bind (Cmd.declareDatatype decl) Smt.pure
+
+/-- Declare a datatype sort and return the same declaration as a handle for safe downstream use. -/
+def declareDatatypeSafe (decl : DatatypeDecl) : Smt DatatypeDecl := do
+  declareDatatype decl
+  pure decl
+
+/-- Declare a constant of a datatype sort. -/
+def declareDatatypeConst (name : String) (datatypeName : String) : Smt (Expr (Ty.datatype datatypeName)) :=
+  Smt.bind (Cmd.declareConst name (Ty.datatype datatypeName)) Smt.pure
+
+/-- Declare a constant of the exact datatype declaration provided. -/
+def declareDatatypeConstOf (name : String) (decl : DatatypeDecl) : Smt (Expr (Ty.datatype decl.name)) :=
+  Smt.bind (Cmd.declareConst name (Ty.datatype decl.name)) Smt.pure
+
 /-- Declare a tensor of variables, building the nested Vector structure -/
 def declareTensorAux (name : String) (ty : Ty) (prefix_ : List Nat) :
     (dims : List Nat) → Smt (Tensor dims (Expr ty))
@@ -81,8 +100,8 @@ def declareBVTensor (name : String) (dims : List Nat) (n : Nat) : Smt (Tensor di
 def declareBoolTensor (name : String) (dims : List Nat) : Smt (Tensor dims (Expr Ty.bool)) :=
   declareTensor name dims Ty.bool
 
-/-- Declare an array variable with BitVec index and element type -/
-def declareArray (name : String) (idxWidth : Nat) (elem : ElemTy) : Smt (Expr (Ty.array idxWidth elem)) :=
+/-- Declare an array variable with BitVec index and element type. -/
+def declareArray (name : String) (idxWidth : Nat) (elem : Ty) : Smt (Expr (Ty.array idxWidth elem)) :=
   Smt.bind (Cmd.declareConst name (Ty.array idxWidth elem)) Smt.pure
 
 end SmtLibDsl.SMT

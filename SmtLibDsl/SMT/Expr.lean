@@ -4,37 +4,118 @@
 -/
 namespace SmtLibDsl.SMT
 
-/-- Element types for arrays (base types only, no nested arrays) -/
-inductive ElemTy where
-  | bool
-  | bitVec (n : Nat)
-deriving Repr, DecidableEq
-
-/-- Convert ElemTy to SMT-LIB2 syntax string -/
-def ElemTy.toSmtLib : ElemTy → String
-  | ElemTy.bool => "Bool"
-  | ElemTy.bitVec n => s!"(_ BitVec {n})"
-
-instance : ToString ElemTy where
-  toString := ElemTy.toSmtLib
-
 /-- SMT-LIB sorts for QF_ABV theory (arrays + bitvectors) -/
 inductive Ty where
   | bool
   | bitVec (n : Nat)
-  | array (idxWidth : Nat) (elem : ElemTy)  -- Array (BitVec idxWidth) elem
+  | array (idxWidth : Nat) (elem : Ty)  -- Array (BitVec idxWidth) elem (supports nested arrays)
+  | datatype (name : String)
 deriving Repr, DecidableEq
 
-/-- Convert ElemTy to Ty -/
-def ElemTy.toTy : ElemTy → Ty
-  | ElemTy.bool => Ty.bool
-  | ElemTy.bitVec n => Ty.bitVec n
+/-- Generic SMT S-expression value for decoded model terms. -/
+inductive SExpr where
+  | atom (value : String)
+  | list (items : List SExpr)
+deriving Repr
+
+namespace SExpr
+
+private def dropWs : List Char → List Char
+  | c :: cs => if c.isWhitespace then dropWs cs else c :: cs
+  | [] => []
+
+private def takeAtom : List Char → (String × List Char)
+  | [] => ("", [])
+  | c :: cs =>
+    if c.isWhitespace || c == '(' || c == ')' then
+      ("", c :: cs)
+    else
+      let (rest, tail) := takeAtom cs
+      (String.singleton c ++ rest, tail)
+
+private partial def takeBalanced (cs : List Char) : Option (String × List Char) :=
+  let rec go (depth : Nat) (acc : List Char) : List Char → Option (String × List Char)
+    | [] => none
+    | c :: rest =>
+      let depth' := if c == '(' then depth + 1 else if c == ')' then depth - 1 else depth
+      let acc' := c :: acc
+      if depth' == 0 then
+        some (String.mk acc'.reverse, rest)
+      else
+        go depth' acc' rest
+  match cs with
+  | '(' :: _ => go 0 [] cs
+  | _ => none
+
+partial def parseFromChars : List Char → Option (SExpr × List Char)
+  | cs =>
+    let cs := dropWs cs
+    match cs with
+    | [] => none
+    | '(' :: rest => parseList [] rest
+    | ')' :: _ => none
+    | _ =>
+      let (a, tail) := takeAtom cs
+      if a.isEmpty then none else some (.atom a, tail)
+where
+  parseList (acc : List SExpr) : List Char → Option (SExpr × List Char)
+    | cs =>
+      let cs := dropWs cs
+      match cs with
+      | [] => none
+      | ')' :: rest => some (.list acc.reverse, rest)
+      | _ =>
+        match parseFromChars cs with
+        | some (item, rest) => parseList (item :: acc) rest
+        | none => none
+
+/-- Parse a full SMT S-expression string. -/
+def parse (s : String) : Option SExpr :=
+  match parseFromChars s.toList with
+  | some (sexpr, rest) =>
+    if (dropWs rest).isEmpty then some sexpr else none
+  | none => none
+
+partial def toSmtLib : SExpr → String
+  | .atom a => a
+  | .list xs => s!"({String.intercalate " " (xs.map toSmtLib)})"
+
+instance : ToString SExpr where
+  toString := toSmtLib
+
+end SExpr
+
+/-- Field declaration for a datatype/record. -/
+structure DatatypeField where
+  name : String
+  ty : Ty
+deriving Repr, DecidableEq
+
+/-- Datatype declaration with one constructor and named fields. -/
+structure DatatypeDecl where
+  name : String
+  constructor : String
+  fields : List DatatypeField
+deriving Repr, DecidableEq
+
+/-- A proof-carrying handle to a field that belongs to a specific datatype declaration. -/
+structure DatatypeFieldRef (decl : DatatypeDecl) where
+  field : DatatypeField
+  inDecl : field ∈ decl.fields
+
+/-- Get a field handle by index (safe by construction via `Fin`). -/
+def DatatypeDecl.fieldAt (decl : DatatypeDecl) (idx : Fin decl.fields.length) : DatatypeFieldRef decl :=
+  let field := decl.fields.get idx
+  ⟨field, by
+    dsimp [field]
+    exact List.get_mem decl.fields idx⟩
 
 /-- Convert Ty to SMT-LIB2 syntax string -/
 def Ty.toSmtLib : Ty → String
   | Ty.bool => "Bool"
   | Ty.bitVec n => s!"(_ BitVec {n})"
   | Ty.array idxWidth elem => s!"(Array (_ BitVec {idxWidth}) {elem.toSmtLib})"
+  | Ty.datatype name => name
 
 instance : ToString Ty where
   toString := Ty.toSmtLib
@@ -43,12 +124,18 @@ instance : ToString Ty where
 def Ty.LeanType : Ty → Type
   | Ty.bool => Bool
   | Ty.bitVec n => BitVec n
-  | Ty.array _ _ => Unit  -- Arrays don't have a simple Lean representation
+  | Ty.array _ _ => SExpr
+  | Ty.datatype _ => SExpr
 
-/-- Map ElemTy to corresponding Lean types -/
-def ElemTy.LeanType : ElemTy → Type
-  | ElemTy.bool => Bool
-  | ElemTy.bitVec n => BitVec n
+/-- Compile a datatype declaration to SMT-LIB2 syntax. -/
+def DatatypeDecl.toSmtLib (decl : DatatypeDecl) : String :=
+  let fieldStr := decl.fields
+    |> List.map (fun f => s!"({f.name} {f.ty})")
+    |> String.intercalate " "
+  if fieldStr.isEmpty then
+    s!"(declare-datatype {decl.name} (({decl.constructor})))"
+  else
+    s!"(declare-datatype {decl.name} (({decl.constructor} {fieldStr})))"
 
 /-- Parse an SMT-LIB boolean value to Lean Bool -/
 def parseBool (s : String) : Option Bool :=
@@ -99,7 +186,15 @@ def Ty.parse (ty : Ty) (s : String) : Option ty.LeanType :=
   match ty with
   | Ty.bool => parseBool s
   | Ty.bitVec n => parseBitVec s n
-  | Ty.array _ _ => some ()  -- Arrays can't be easily parsed from SMT output
+  | Ty.array _ _ => SExpr.parse s
+  | Ty.datatype _ => SExpr.parse s
+
+/-- Parse only array/datatype values into generic S-expressions. -/
+def Ty.parseAsSExpr? (ty : Ty) (s : String) : Option SExpr :=
+  match ty with
+  | Ty.array _ _ => SExpr.parse s
+  | Ty.datatype _ => SExpr.parse s
+  | _ => none
 
 /-- Expressions indexed by sort, ensuring width-correctness at compile time -/
 inductive Expr : Ty → Type where
@@ -174,13 +269,16 @@ inductive Expr : Ty → Type where
   | bvSMulO : Expr (Ty.bitVec n) → Expr (Ty.bitVec n) → Expr Ty.bool
 
   -- Array operations
-  | mkArray : (idxWidth : Nat) → (elem : ElemTy) → Expr elem.toTy → Expr (Ty.array idxWidth elem)
-  | select  : Expr (Ty.array idxWidth elem) → Expr (Ty.bitVec idxWidth) → Expr elem.toTy
-  | store   : Expr (Ty.array idxWidth elem) → Expr (Ty.bitVec idxWidth) → Expr elem.toTy → Expr (Ty.array idxWidth elem)
+  | mkArray : (idxWidth : Nat) → (elem : Ty) → Expr elem → Expr (Ty.array idxWidth elem)
+  | select  : Expr (Ty.array idxWidth elem) → Expr (Ty.bitVec idxWidth) → Expr elem
+  | store   : Expr (Ty.array idxWidth elem) → Expr (Ty.bitVec idxWidth) → Expr elem → Expr (Ty.array idxWidth elem)
   | arrEq   : Expr (Ty.array idxWidth elem) → Expr (Ty.array idxWidth elem) → Expr Ty.bool
 
   -- Distinct constraint (names stored directly to avoid nested inductive issue)
   | distinctBV : (n : Nat) → (names : List String) → Expr Ty.bool
+
+  -- Datatype field selector
+  | dtSelect : (field : String) → (retTy : Ty) → Expr (Ty.datatype dtName) → Expr retTy
 
 -- Smart constructors
 
@@ -193,17 +291,27 @@ def btrue : Expr Ty.bool := Expr.btrue
 /-- Boolean false -/
 def bfalse : Expr Ty.bool := Expr.bfalse
 
-/-- Create a constant array where all indices map to the same value -/
-def constArray (idxWidth : Nat) (elem : ElemTy) (v : Expr elem.toTy) : Expr (Ty.array idxWidth elem) :=
+/-- Create a constant array where all indices map to the same value. -/
+def constArray (idxWidth : Nat) (elem : Ty) (v : Expr elem) : Expr (Ty.array idxWidth elem) :=
   Expr.mkArray idxWidth elem v
 
 /-- Read from an array at index -/
-def selectArr (arr : Expr (Ty.array idxWidth elem)) (i : Expr (Ty.bitVec idxWidth)) : Expr elem.toTy :=
+def selectArr (arr : Expr (Ty.array idxWidth elem)) (i : Expr (Ty.bitVec idxWidth)) : Expr elem :=
   Expr.select arr i
 
 /-- Write to an array at index, returning new array -/
-def storeArr (arr : Expr (Ty.array idxWidth elem)) (i : Expr (Ty.bitVec idxWidth)) (v : Expr elem.toTy) : Expr (Ty.array idxWidth elem) :=
+def storeArr (arr : Expr (Ty.array idxWidth elem)) (i : Expr (Ty.bitVec idxWidth)) (v : Expr elem) : Expr (Ty.array idxWidth elem) :=
   Expr.store arr i v
+
+/-- Select a field from a datatype value (record selector syntax in SMT-LIB). -/
+def selectField (field : String) (retTy : Ty) (rec : Expr (Ty.datatype dtName)) : Expr retTy :=
+  Expr.dtSelect field retTy rec
+
+/-- Type-safe field selection using a proof-carrying field handle.
+    The return type is inferred from the selected field. -/
+def selectFieldSafe {decl : DatatypeDecl} (fieldRef : DatatypeFieldRef decl)
+    (rec : Expr (Ty.datatype decl.name)) : Expr fieldRef.field.ty :=
+  Expr.dtSelect fieldRef.field.name fieldRef.field.ty rec
 
 /-- Extract variable name from a variable expression -/
 def Expr.varName : Expr ty → Option String

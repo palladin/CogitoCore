@@ -44,32 +44,69 @@ private def parseResultRaw (output : String) : (List (String × String)) ⊕ Str
   | _ => .inr s!"Failed to parse: {output}"
 where
   parseModel (modelStr : String) : List (String × String) :=
-    -- Parse: (define-fun name () Type value)
-    -- Join all lines and extract define-fun blocks
-    let s := modelStr.replace "\n" " " |>.replace "  " " "
-    extractDefineFuns s []
-  extractDefineFuns (s : String) (acc : List (String × String)) : List (String × String) :=
-    match s.splitOn "(define-fun " with
-    | [] => acc.reverse
+    let chunks := (modelStr.replace "\n" " ").splitOn "(define-fun "
+    match chunks with
+    | [] => []
     | _ :: rest =>
-      let pairs := rest.filterMap fun part =>
-        -- part looks like: "x () (_ BitVec 8) #x09) ..."
-        let tokens := part.splitOn " " |>.filter (·.length > 0)
-        match tokens with
-        | name :: "()" :: _ =>
-          -- Find the value: after the type, before the closing paren
-          -- Look for #x... or #b... or a number
-          let valueOpt := tokens.find? fun t =>
-            t.startsWith "#x" || t.startsWith "#b" || t.all Char.isDigit
-          match valueOpt with
-          | some v => some (name, v.dropRightWhile (· == ')'))
-          | none =>
-            -- Try to find "true" or "false" for booleans
-            if tokens.contains "true" then some (name, "true")
-            else if tokens.contains "false" then some (name, "false")
-            else none
-        | _ => none
-      acc.reverse ++ pairs
+      rest.filterMap fun part =>
+        let candidate := "(define-fun " ++ part
+        match takeBalanced candidate.toList with
+        | some (block, _) => parseDefineFunBlock block
+        | none => none
+
+  dropWs : List Char → List Char
+    | c :: cs => if c.isWhitespace then dropWs cs else c :: cs
+    | [] => []
+
+  takeAtom : List Char → (String × List Char)
+    | [] => ("", [])
+    | c :: cs =>
+      if c.isWhitespace || c == '(' || c == ')' then
+        ("", c :: cs)
+      else
+        let (rest, tail) := takeAtom cs
+        (String.singleton c ++ rest, tail)
+
+  takeBalanced : List Char → Option (String × List Char)
+    | [] => none
+    | cs@('(' :: _) =>
+      let rec go (depth : Nat) (acc : List Char) : List Char → Option (String × List Char)
+        | [] => none
+        | c :: rest =>
+          let depth' := if c == '(' then depth + 1 else if c == ')' then depth - 1 else depth
+          let acc' := c :: acc
+          if depth' == 0 then
+            some (String.mk acc'.reverse, rest)
+          else
+            go depth' acc' rest
+      go 0 [] cs
+    | _ => none
+
+  parseTokenOrSexp (cs : List Char) : Option (String × List Char) :=
+    let cs := dropWs cs
+    match cs with
+    | [] => none
+    | '(' :: _ => takeBalanced cs
+    | _ =>
+      let (tok, rest) := takeAtom cs
+      if tok.isEmpty then none else some (tok, rest)
+
+  parseDefineFunBlock (block : String) : Option (String × String) :=
+    if !block.startsWith "(define-fun" then none
+    else
+      let rest := (block.drop "(define-fun".length).toList
+      let (name, rest) := takeAtom (dropWs rest)
+      if name.isEmpty then none
+      else
+        match parseTokenOrSexp rest with
+        | none => none
+        | some (_, rest) =>
+          match parseTokenOrSexp rest with
+          | none => none
+          | some (_, rest) =>
+            match parseTokenOrSexp rest with
+            | none => none
+            | some (value, _) => some (name, value.trim)
 
 /-- Configuration for the solve function -/
 structure SolveConfig where
