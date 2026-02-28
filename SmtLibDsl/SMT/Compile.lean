@@ -85,6 +85,7 @@ def Ty.usesDatatype : Ty → Bool
 partial def Smt.usesDatatype : Smt α → Bool
   | .pure _ => false
   | .bind (.declareDatatype _) _ => true
+  | .bind (.declareDatatypeConstOf _ _) _ => true
   | .bind (.declareConst name ty) f => ty.usesDatatype || usesDatatype (f (.var name ty))
   | .bind (.assert _) f => usesDatatype (f ())
 
@@ -92,15 +93,37 @@ partial def Smt.usesDatatype : Smt α → Bool
 def compileCmd : Cmd α → (α × String)
   | .declareDatatype decl => ((), decl.toSmtLib)
   | .declareConst name s => (.var name s, s!"(declare-const {name} {s})")
+  | .declareDatatypeConstOf name decl => (.var name (Ty.datatype decl.name), s!"(declare-const {name} {Ty.datatype decl.name})")
   | .assert e => ((), s!"(assert {compileExpr e})")
+
+/-- Insert datatype declaration once per datatype name, preserving first-seen order. -/
+private def addDatatypeDecl (decls : List DatatypeDecl) (decl : DatatypeDecl) : List DatatypeDecl :=
+  if decls.any (fun d => d.name == decl.name) then decls else decls ++ [decl]
+
+/-- Collect datatype declarations required by an SMT program. -/
+partial def Smt.collectDatatypeDecls : Smt α → List DatatypeDecl
+  | .pure _ => []
+  | .bind (.declareDatatype decl) f => addDatatypeDecl (collectDatatypeDecls (f ())) decl
+  | .bind (.declareDatatypeConstOf name decl) f =>
+    addDatatypeDecl (collectDatatypeDecls (f (.var name (Ty.datatype decl.name)))) decl
+  | .bind (.declareConst name ty) f => collectDatatypeDecls (f (.var name ty))
+  | .bind (.assert _) f => collectDatatypeDecls (f ())
 
 /-- Compile an Smt program to SMT-LIB2 string (with QF_ABV logic for arrays + bitvectors) -/
 partial def compile (smt : Smt Unit) : String :=
   let logic := if smt.usesDatatype then "ALL" else "QF_ABV"
-  s!"(set-logic {logic})\n{compileBody smt}\n(check-sat)\n(get-model)"
+  let datatypeDecls := String.intercalate "\n" ((smt.collectDatatypeDecls).map DatatypeDecl.toSmtLib)
+  let body := compileBody smt
+  let commandBody :=
+    if datatypeDecls.isEmpty then body
+    else if body.isEmpty then datatypeDecls
+    else datatypeDecls ++ "\n" ++ body
+  s!"(set-logic {logic})\n{commandBody}\n(check-sat)\n(get-model)"
 where
   compileBody : Smt Unit → String
     | .pure () => ""
+    | .bind (.declareDatatype _) f =>
+      compileBody (f ())
     | .bind cmd f =>
       let (a, s) := compileCmd cmd
       let rest := compileBody (f a)

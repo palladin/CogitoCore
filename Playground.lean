@@ -86,7 +86,6 @@ def nestedArrays : Smt Unit := do
 
 /-- 4) Datatype with string selector API. -/
 def datatypeSimple : Smt Unit := do
-  declareDatatype PointDecl
   let p ← declareDatatypeConstOf "p" PointDecl
   assert (selectField "x" (Ty.bitVec 8) p =. bv 3 8)
 
@@ -95,7 +94,6 @@ def datatypeSimple : Smt Unit := do
 
 /-- 5) Datatype with dependent-safe selector API. -/
 def datatypeSafe : Smt Unit := do
-  declareDatatype PointDecl
   let p ← declareDatatypeConstOf "p" PointDecl
   assert (selectFieldSafe pointXField p =. bv 3 8)
 

@@ -83,6 +83,7 @@ lake exe smtlibdsl-test
 | `Ty.bool` | Boolean |
 | `Ty.bitVec n` | Bitvector of width `n` |
 | `Ty.array idxWidth elem` | Array with bitvector index |
+| `Ty.datatype name` | User-defined datatype sort |
 
 ### Declaring Variables
 
@@ -92,6 +93,38 @@ let b ← declareBool "b"           -- Boolean
 let arr ← declareArray "a" 8 (Ty.bitVec 16)  -- Array
 let grid ← declareBVTensor "cell" [9, 9] 4       -- 9×9 tensor of 4-bit values
 ```
+
+### Datatypes
+
+Define a datatype declaration once in Lean:
+
+```lean
+def PointDecl : DatatypeDecl := {
+  name := "Point"
+  constructor := "mkPoint"
+  fields := [
+    { name := "x", ty := Ty.bitVec 8 },
+    { name := "y", ty := Ty.bitVec 8 }
+  ]
+}
+```
+
+Then choose one of two declaration styles:
+
+```lean
+-- Explicit style: declare sort, then declare constants by name
+declareDatatype PointDecl
+let p ← declareDatatypeConst "p" "Point"
+
+-- Preferred implicit style: declaration is inferred from PointDecl
+let q ← declareDatatypeConstOf "q" PointDecl
+```
+
+Notes:
+
+- `declareDatatypeConstOf` carries the full `DatatypeDecl`, and `compile` automatically emits a top-level `(declare-datatype ...)`.
+- `declareDatatype` is still supported, but optional when all datatype constants use `declareDatatypeConstOf`.
+- `declareDatatypeConst` only has the datatype name string, so use it when the sort is already declared.
 
 ### Operators
 

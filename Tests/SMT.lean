@@ -179,6 +179,24 @@ def compileTests : TestSeq :=
         assert (selectFieldSafe xField p =. bv 3 8)
       compile prog = "(set-logic ALL)\n(declare-datatype Point ((mkPoint (x (_ BitVec 8)) (y (_ BitVec 8)))))\n(declare-const p Point)\n(assert (= (x p) (_ bv3 8)))\n(check-sat)\n(get-model)"
     ) $
+    test "datatype program safe implicit declaration" (
+      let point : DatatypeDecl := {
+        name := "Point"
+        constructor := "mkPoint"
+        fields := [
+          { name := "x", ty := Ty.bitVec 8 },
+          { name := "y", ty := Ty.bitVec 8 }
+        ]
+      }
+      let xField : DatatypeFieldRef point := {
+        field := { name := "x", ty := Ty.bitVec 8 }
+        inDecl := by simp [point]
+      }
+      let prog : Smt Unit := do
+        let p ← declareDatatypeConstOf "p" point
+        assert (selectFieldSafe xField p =. bv 3 8)
+      compile prog = "(set-logic ALL)\n(declare-datatype Point ((mkPoint (x (_ BitVec 8)) (y (_ BitVec 8)))))\n(declare-const p Point)\n(assert (= (x p) (_ bv3 8)))\n(check-sat)\n(get-model)"
+    ) $
     test "nested array program" (
       let prog : Smt Unit := do
         let a ← declareArray "a" 8 (Ty.array 4 (Ty.bitVec 8))

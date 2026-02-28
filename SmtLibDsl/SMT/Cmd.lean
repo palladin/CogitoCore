@@ -14,6 +14,7 @@ abbrev VarSchema := List (String × Ty)
 inductive Cmd : Type → Type _ where
   | declareDatatype : DatatypeDecl → Cmd Unit
   | declareConst : String → (ty : Ty) → Cmd (Expr ty)
+  | declareDatatypeConstOf : String → (decl : DatatypeDecl) → Cmd (Expr (Ty.datatype decl.name))
   | assert       : Expr Ty.bool → Cmd Unit
 
 /-- Free monad for sequencing SMT commands -/
@@ -37,6 +38,8 @@ def Smt.schema : Smt α → VarSchema
   | .bind (.declareDatatype _) f => schema (f ())
   | .bind (.declareConst name ty) f =>
     (name, ty) :: schema (f (.var name ty))
+  | .bind (.declareDatatypeConstOf name decl) f =>
+    (name, Ty.datatype decl.name) :: schema (f (.var name (Ty.datatype decl.name)))
   | .bind (.assert _) f => schema (f ())
 
 -- Command API
@@ -72,7 +75,7 @@ def declareDatatypeConst (name : String) (datatypeName : String) : Smt (Expr (Ty
 
 /-- Declare a constant of the exact datatype declaration provided. -/
 def declareDatatypeConstOf (name : String) (decl : DatatypeDecl) : Smt (Expr (Ty.datatype decl.name)) :=
-  Smt.bind (Cmd.declareConst name (Ty.datatype decl.name)) Smt.pure
+  Smt.bind (Cmd.declareDatatypeConstOf name decl) Smt.pure
 
 /-- Declare a tensor of variables, building the nested Vector structure -/
 def declareTensorAux (name : String) (ty : Ty) (prefix_ : List Nat) :
