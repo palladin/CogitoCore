@@ -266,8 +266,8 @@ def displayPattern (name : String) (pattern : Pattern) : IO Unit := do
 def extractBoard (prefix_ : String) (model : Model schema) : Pattern :=
   Tensor2D.tabulate gridRows gridCols fun r c =>
     match model.lookup s!"{prefix_}_{r.val}_{c.val}" with
-    | some v => (parseBitVec v 4 |>.getD 0).toNat
-    | none => 0
+    | .ok v => (parseBitVec v 4 |>.getD 0).toNat
+    | .error _ => 0
 
 /-- Display solution from model -/
 def displaySolution (model : Model schema) : IO Unit := do

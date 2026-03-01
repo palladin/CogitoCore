@@ -84,28 +84,44 @@ def Ty.usesDatatype : Ty → Bool
 /-- Check whether an SMT program uses datatype declarations/sorts. -/
 partial def Smt.usesDatatype : Smt α → Bool
   | .pure _ => false
-  | .bind (.declareDatatype _) _ => true
   | .bind (.declareDatatypeConstOf _ _) _ => true
   | .bind (.declareConst name ty) f => ty.usesDatatype || usesDatatype (f (.var name ty))
   | .bind (.assert _) f => usesDatatype (f ())
 
 /-- Compile a command, returning the result value and SMT-LIB2 string -/
 def compileCmd : Cmd α → (α × String)
-  | .declareDatatype decl => ((), decl.toSmtLib)
   | .declareConst name s => (.var name s, s!"(declare-const {name} {s})")
-  | .declareDatatypeConstOf name decl => (.var name (Ty.datatype decl.name), s!"(declare-const {name} {Ty.datatype decl.name})")
+  | .declareDatatypeConstOf name decl => (.var name (Ty.datatype decl), s!"(declare-const {name} {Ty.datatype decl})")
   | .assert e => ((), s!"(assert {compileExpr e})")
 
 /-- Insert datatype declaration once per datatype name, preserving first-seen order. -/
 private def addDatatypeDecl (decls : List DatatypeDecl) (decl : DatatypeDecl) : List DatatypeDecl :=
   if decls.any (fun d => d.name == decl.name) then decls else decls ++ [decl]
 
+mutual
+
+/-- Collect inferred datatype declarations from a sort. -/
+private partial def collectDatatypeDeclsFromTy (ty : Ty) (decls : List DatatypeDecl) : List DatatypeDecl :=
+  match ty with
+  | .datatype decl => collectDatatypeDeclsFromDecl decl decls
+  | .array _ elem => collectDatatypeDeclsFromTy elem decls
+  | .bool | .bitVec _ => decls
+
+/-- Collect a datatype declaration and all transitive field dependencies. -/
+private partial def collectDatatypeDeclsFromDecl (decl : DatatypeDecl) (decls : List DatatypeDecl) : List DatatypeDecl :=
+  if decls.any (fun d => d.name == decl.name) then
+    decls
+  else
+    let withDeps := decl.fields.foldl (fun acc f => collectDatatypeDeclsFromTy f.ty acc) decls
+    addDatatypeDecl withDeps decl
+
+end
+
 /-- Collect datatype declarations required by an SMT program. -/
 partial def Smt.collectDatatypeDecls : Smt α → List DatatypeDecl
   | .pure _ => []
-  | .bind (.declareDatatype decl) f => addDatatypeDecl (collectDatatypeDecls (f ())) decl
   | .bind (.declareDatatypeConstOf name decl) f =>
-    addDatatypeDecl (collectDatatypeDecls (f (.var name (Ty.datatype decl.name)))) decl
+    collectDatatypeDeclsFromDecl decl (collectDatatypeDecls (f (.var name (Ty.datatype decl))))
   | .bind (.declareConst name ty) f => collectDatatypeDecls (f (.var name ty))
   | .bind (.assert _) f => collectDatatypeDecls (f ())
 
@@ -122,8 +138,6 @@ partial def compile (smt : Smt Unit) : String :=
 where
   compileBody : Smt Unit → String
     | .pure () => ""
-    | .bind (.declareDatatype _) f =>
-      compileBody (f ())
     | .bind cmd f =>
       let (a, s) := compileCmd cmd
       let rest := compileBody (f a)

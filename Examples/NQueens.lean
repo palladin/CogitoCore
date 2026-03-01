@@ -153,8 +153,8 @@ def displayBoard (n : Nat) (queenCols : List Nat) : IO Unit := do
 def extractQueenPositions (n : Nat) (model : Model schema) : List Nat :=
   List.range n |>.map fun i =>
     match model.lookup s!"col_{i}" with
-    | some v => parseBitVec v |>.getD 0
-    | none => 0
+    | .ok v => parseBitVec v |>.getD 0
+    | .error _ => 0
 
 end NQueens
 

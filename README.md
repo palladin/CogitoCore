@@ -83,7 +83,7 @@ lake exe smtlibdsl-test
 | `Ty.bool` | Boolean |
 | `Ty.bitVec n` | Bitvector of width `n` |
 | `Ty.array idxWidth elem` | Array with bitvector index |
-| `Ty.datatype name` | User-defined datatype sort |
+| `Ty.datatype decl` | User-defined datatype sort (carries full `DatatypeDecl`) |
 
 ### Declaring Variables
 
@@ -112,19 +112,69 @@ def PointDecl : DatatypeDecl := {
 Then choose one of two declaration styles:
 
 ```lean
--- Explicit style: declare sort, then declare constants by name
-declareDatatype PointDecl
-let p ← declareDatatypeConst "p" "Point"
+-- Datatype declaration is inferred from PointDecl
+let p ← declareDatatypeConstOf "p" PointDecl
 
--- Preferred implicit style: declaration is inferred from PointDecl
-let q ← declareDatatypeConstOf "q" PointDecl
+-- Build a safe selector handle by static field name
+let xField := PointDecl.fieldByName "x" (by simp [PointDecl, DatatypeDecl.fieldNames])
 ```
 
 Notes:
 
-- `declareDatatypeConstOf` carries the full `DatatypeDecl`, and `compile` automatically emits a top-level `(declare-datatype ...)`.
-- `declareDatatype` is still supported, but optional when all datatype constants use `declareDatatypeConstOf`.
-- `declareDatatypeConst` only has the datatype name string, so use it when the sort is already declared.
+- `declareDatatypeConstOf` carries the full `DatatypeDecl`, and `compile` automatically emits all required datatype declarations.
+- Nested datatypes are inferred transitively from field types, so no dummy constants are needed for dependent datatype declarations.
+
+## Migration (Breaking Changes)
+
+If you're upgrading from older APIs, update code as follows:
+
+1) Datatype sort payload now uses declarations, not names:
+
+```lean
+-- Before
+Ty.datatype "Point"
+
+-- After
+Ty.datatype PointDecl
+```
+
+2) Field references now use index-based handles:
+
+```lean
+-- Before
+let xField : DatatypeFieldRef PointDecl := {
+  field := { name := "x", ty := Ty.bitVec 8 }
+  inDecl := by simp [PointDecl]
+}
+
+-- After (static by-name)
+let xField : DatatypeFieldRef PointDecl :=
+  PointDecl.fieldByName "x" (by simp [PointDecl, DatatypeDecl.fieldNames])
+```
+
+3) `declareDatatype` and `declareDatatypeConst` were removed from the public DSL API. Use:
+
+```lean
+let p ← declareDatatypeConstOf "p" PointDecl
+```
+
+4) Model lookup/get APIs now return `Except String ...` (with error messages), and no longer require membership proof arguments:
+
+```lean
+match model.get "p" (Ty.datatype PointDecl) with
+| .ok pVal => ...
+| .error err => ...
+```
+
+`Model.lookup?` / `Model.get?` are available as Option-style compatibility helpers.
+
+5) Datatype field extraction now returns `Except String ...`:
+
+```lean
+match pVal.getField xField with
+| .ok x => ...
+| .error err => ...
+```
 
 ### Operators
 

@@ -339,12 +339,12 @@ def displayPieceSolution (puzzle : Puzzle) (model : Model schema) : IO Unit := d
     for j in List.range puzzle.cols do
       let name := s!"x_{i}_{j}"
       match model.lookup name with
-      | some v =>
+      | .ok v =>
         let displayVal := match parseBitVec v with
           | some n => s!"{n}"
           | none => v.take 3
         row := row ++ s!" {leftPad (cellWidth - 2) ' ' displayVal} │"
-      | none => row := row ++ s!"{String.mk (List.replicate (cellWidth - 1) ' ')}?│"
+      | .error _ => row := row ++ s!"{String.mk (List.replicate (cellWidth - 1) ' ')}?│"
     IO.println row
     if i < puzzle.rows - 1 then
       IO.println midLine
@@ -359,11 +359,11 @@ def displayColorSolution (puzzle : Puzzle) (model : Model schema) : IO Unit := d
   -- Helper to get color for a cell edge
   let getColorChar := fun (i j : Nat) (dir : String) =>
     match model.lookup s!"cx_{i}_{j}_{dir}" with
-    | some v =>
+    | .ok v =>
       match parseBitVec v with
       | some n => intColor n
       | none => '?'
-    | none => '?'
+    | .error _ => '?'
 
   -- Print each row of cells (each cell takes 3 lines)
   for i in List.range puzzle.rows do

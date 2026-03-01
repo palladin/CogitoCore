@@ -4,13 +4,30 @@
 -/
 namespace SmtLibDsl.SMT
 
-/-- SMT-LIB sorts for QF_ABV theory (arrays + bitvectors) -/
+mutual
+
+/-- SMT-LIB sorts for QF_ABV theory (arrays + bitvectors + datatypes). -/
 inductive Ty where
   | bool
   | bitVec (n : Nat)
   | array (idxWidth : Nat) (elem : Ty)  -- Array (BitVec idxWidth) elem (supports nested arrays)
-  | datatype (name : String)
-deriving Repr, DecidableEq
+  | datatype (decl : DatatypeDecl)
+deriving Repr
+
+/-- Field declaration for a datatype/record. -/
+structure DatatypeField where
+  name : String
+  ty : Ty
+deriving Repr
+
+/-- Datatype declaration with one constructor and named fields. -/
+structure DatatypeDecl where
+  name : String
+  constructor : String
+  fields : List DatatypeField
+deriving Repr
+
+end
 
 /-- Generic SMT S-expression value for decoded model terms. -/
 inductive SExpr where
@@ -85,37 +102,56 @@ instance : ToString SExpr where
 
 end SExpr
 
-/-- Field declaration for a datatype/record. -/
-structure DatatypeField where
-  name : String
-  ty : Ty
-deriving Repr, DecidableEq
-
-/-- Datatype declaration with one constructor and named fields. -/
-structure DatatypeDecl where
-  name : String
-  constructor : String
-  fields : List DatatypeField
-deriving Repr, DecidableEq
-
 /-- A proof-carrying handle to a field that belongs to a specific datatype declaration. -/
 structure DatatypeFieldRef (decl : DatatypeDecl) where
-  field : DatatypeField
-  inDecl : field ∈ decl.fields
+  idx : Fin decl.fields.length
 
-/-- Get a field handle by index (safe by construction via `Fin`). -/
-def DatatypeDecl.fieldAt (decl : DatatypeDecl) (idx : Fin decl.fields.length) : DatatypeFieldRef decl :=
-  let field := decl.fields.get idx
-  ⟨field, by
-    dsimp [field]
-    exact List.get_mem decl.fields idx⟩
+/-- Resolve a field handle to its field declaration. -/
+def DatatypeFieldRef.field {decl : DatatypeDecl} (fieldRef : DatatypeFieldRef decl) : DatatypeField :=
+  decl.fields.get fieldRef.idx
+
+/-- Membership proof of a field handle in the datatype declaration. -/
+def DatatypeFieldRef.inDecl {decl : DatatypeDecl} (fieldRef : DatatypeFieldRef decl) : fieldRef.field ∈ decl.fields := by
+  exact List.get_mem decl.fields fieldRef.idx
+
+/-- Field names declared by a datatype. -/
+def DatatypeDecl.fieldNames (decl : DatatypeDecl) : List String :=
+  decl.fields.map DatatypeField.name
+
+/-- Internal: locate a field index by static name membership proof. -/
+private def findFieldIndexByName
+    : (fields : List DatatypeField) →
+      (name : String) →
+      name ∈ fields.map DatatypeField.name →
+      Fin fields.length
+  | [], _, h => nomatch h
+  | f :: fs, name, h =>
+      if hEq : name = f.name then
+        ⟨0, by simp⟩
+      else
+        by
+          have hTail : name ∈ fs.map DatatypeField.name := by
+            have h' : name ∈ f.name :: fs.map DatatypeField.name := by
+              simpa using h
+            cases h' with
+            | head _ => exact False.elim (hEq rfl)
+            | tail _ hTail => exact hTail
+          have idxTail : Fin fs.length := findFieldIndexByName fs name hTail
+          exact ⟨idxTail.1.succ, Nat.succ_lt_succ idxTail.2⟩
+
+/-- Get a field handle by static field name (no runtime option). -/
+def DatatypeDecl.fieldByName (decl : DatatypeDecl) (name : String)
+    (h : name ∈ decl.fieldNames) : DatatypeFieldRef decl :=
+  let idx : Fin decl.fields.length := by
+    simpa [DatatypeDecl.fieldNames] using findFieldIndexByName decl.fields name h
+  ⟨idx⟩
 
 /-- Convert Ty to SMT-LIB2 syntax string -/
 def Ty.toSmtLib : Ty → String
   | Ty.bool => "Bool"
   | Ty.bitVec n => s!"(_ BitVec {n})"
   | Ty.array idxWidth elem => s!"(Array (_ BitVec {idxWidth}) {elem.toSmtLib})"
-  | Ty.datatype name => name
+  | Ty.datatype decl => decl.name
 
 instance : ToString Ty where
   toString := Ty.toSmtLib
@@ -142,17 +178,23 @@ instance : ToString DatatypeValue where
 
 end DatatypeValue
 
+/-- Declaration-indexed datatype value wrapper used by `Ty.LeanType`. -/
+structure DatatypeValueOf (decl : DatatypeDecl) where
+  raw : DatatypeValue
+deriving Repr, Inhabited
+
 /-- Typed model value for SMT arrays, recursive in element value type. -/
 inductive ArrayValue (idxWidth : Nat) (elem : Type) where
   | const : elem → ArrayValue idxWidth elem
   | store : ArrayValue idxWidth elem → BitVec idxWidth → elem → ArrayValue idxWidth elem
+deriving Inhabited
 
 /-- Map SMT sorts to recursively typed Lean values. -/
 def Ty.LeanType : Ty → Type
   | Ty.bool => Bool
   | Ty.bitVec n => BitVec n
   | Ty.array idxWidth elem => ArrayValue idxWidth (Ty.LeanType elem)
-  | Ty.datatype _ => DatatypeValue
+  | Ty.datatype decl => DatatypeValueOf decl
 
 private def DatatypeFieldValuesList : List DatatypeField → Type
   | [] => PUnit
@@ -162,33 +204,15 @@ private def DatatypeFieldValuesList : List DatatypeField → Type
 def DatatypeFieldValues (decl : DatatypeDecl) : Type :=
   DatatypeFieldValuesList decl.fields
 
-structure DatatypeValueOf (decl : DatatypeDecl) where
-  fields : DatatypeFieldValues decl
-
-private def DatatypeFieldValuesList.get
+private def DatatypeFieldValuesList.getAt
     : {fields : List DatatypeField} →
       DatatypeFieldValuesList fields →
-      (target : DatatypeField) →
-      target ∈ fields →
-      Ty.LeanType target.ty
-  | [], _, _, h => nomatch h
-  | f :: fs, (v, rest), target, h =>
-      if hEq : target = f then
-        by
-          cases hEq
-          simpa using v
-      else
-        let hTail : target ∈ fs := by
-          cases h with
-          | head _ => exact False.elim (hEq rfl)
-          | tail _ hTail => exact hTail
-        DatatypeFieldValuesList.get rest target hTail
-
-/-- Extract a typed datatype field value using a proof-carrying field handle. -/
-def DatatypeValueOf.getField {decl : DatatypeDecl}
-    (v : DatatypeValueOf decl)
-    (fieldRef : DatatypeFieldRef decl) : Ty.LeanType fieldRef.field.ty :=
-  DatatypeFieldValuesList.get v.fields fieldRef.field fieldRef.inDecl
+      (idx : Fin fields.length) →
+      Ty.LeanType (fields.get idx).ty
+  | [], _, idx => nomatch idx
+  | f :: fs, (v, _), ⟨0, _⟩ => by simpa using v
+  | f :: fs, (_, rest), ⟨Nat.succ n, h⟩ =>
+      DatatypeFieldValuesList.getAt rest ⟨n, Nat.lt_of_succ_lt_succ h⟩
 
 mutual
 
@@ -196,24 +220,13 @@ partial def Ty.showValue : (ty : Ty) → ty.LeanType → String
   | Ty.bool, b => match b with | true => "true" | false => "false"
   | Ty.bitVec _, v => s!"{v.toNat}"
   | Ty.array idxWidth elem, arr => ArrayValue.show idxWidth elem arr
-  | Ty.datatype _, v =>
-      let dv : DatatypeValue := by simpa using v
-      toString dv
+  | Ty.datatype _, v => toString v.raw
 
 partial def ArrayValue.show (idxWidth : Nat) (elem : Ty) : ArrayValue idxWidth (Ty.LeanType elem) → String
   | .const v => s!"const({Ty.showValue elem v})"
   | .store base i v => s!"store({ArrayValue.show idxWidth elem base}, {i.toNat}, {Ty.showValue elem v})"
 
 end
-
-partial def showFieldValues : (fields : List DatatypeField) → DatatypeFieldValuesList fields → List String
-  | [], _ => []
-  | f :: fs, (v, rest) => s!"{f.name}: {Ty.showValue f.ty v}" :: showFieldValues fs rest
-
-instance : ToString (DatatypeValueOf decl) where
-  toString v :=
-    let fields := String.intercalate ", " (showFieldValues decl.fields v.fields)
-    decl.constructor ++ "{" ++ fields ++ "}"
 
 /-- Compile a datatype declaration to SMT-LIB2 syntax. -/
 def DatatypeDecl.toSmtLib (decl : DatatypeDecl) : String :=
@@ -279,7 +292,7 @@ partial def Ty.parseSExpr : (ty : Ty) → SExpr → Option ty.LeanType
   | Ty.bitVec n, .atom s => parseBitVec s n
   | Ty.bitVec _, _ => none
   | Ty.array idxWidth elem, sexpr => ArrayValue.parseSExpr idxWidth elem sexpr
-  | Ty.datatype _, sexpr => some (DatatypeValue.ofSExpr sexpr)
+  | Ty.datatype decl, sexpr => decl.parseValueSExpr sexpr
 
 partial def ArrayValue.parseSExpr (idxWidth : Nat) (elem : Ty) : SExpr → Option (ArrayValue idxWidth (Ty.LeanType elem))
   | .list [(.list [(.atom "as"), (.atom "const"), _]), v] => do
@@ -292,8 +305,6 @@ partial def ArrayValue.parseSExpr (idxWidth : Nat) (elem : Ty) : SExpr → Optio
       pure (.store baseVal idxVal val)
   | _ => none
 
-end
-
 partial def parseFieldValuesSExpr : (fields : List DatatypeField) → List SExpr → Option (DatatypeFieldValuesList fields)
   | [], [] => some PUnit.unit
   | f :: fs, arg :: rest => do
@@ -302,17 +313,55 @@ partial def parseFieldValuesSExpr : (fields : List DatatypeField) → List SExpr
       pure (v, restVals)
   | _, _ => none
 
-def DatatypeDecl.parseValueSExpr (decl : DatatypeDecl) (sexpr : SExpr) : Option (DatatypeValueOf decl) :=
+partial def DatatypeDecl.parseValueSExpr (decl : DatatypeDecl) (sexpr : SExpr) : Option (DatatypeValueOf decl) :=
   match sexpr with
   | .list (.atom ctor :: args) =>
       if ctor == decl.constructor then
-        parseFieldValuesSExpr decl.fields args |>.map (fun fields => ⟨fields⟩)
+        match parseFieldValuesSExpr decl.fields args with
+        | some _ => some ⟨DatatypeValue.ofSExpr sexpr⟩
+        | none => none
       else
         none
   | _ => none
 
+end
+
 def DatatypeDecl.parseValue (decl : DatatypeDecl) (s : String) : Option (DatatypeValueOf decl) :=
   SExpr.parse s >>= decl.parseValueSExpr
+
+private def DatatypeValueOf.parseFields? {decl : DatatypeDecl}
+    (v : DatatypeValueOf decl) : Option (DatatypeFieldValues decl) :=
+  match DatatypeValue.toSExpr v.raw with
+  | .list (.atom ctor :: args) =>
+      if ctor == decl.constructor then
+        parseFieldValuesSExpr decl.fields args
+      else
+        none
+  | _ => none
+
+private partial def showTypedFieldValues : (fields : List DatatypeField) → DatatypeFieldValuesList fields → List String
+  | [], _ => []
+  | f :: fs, (v, rest) => s!"{f.name}: {Ty.showValue f.ty v}" :: showTypedFieldValues fs rest
+
+instance : ToString (DatatypeValueOf decl) where
+  toString v :=
+    match DatatypeValueOf.parseFields? v with
+    | some fields =>
+        let shown := String.intercalate ", " (showTypedFieldValues decl.fields fields)
+        decl.constructor ++ "{" ++ shown ++ "}"
+    | none => toString v.raw
+
+/-- Extract a typed datatype field value using a proof-carrying field handle. -/
+def DatatypeValueOf.getField {decl : DatatypeDecl}
+    (v : DatatypeValueOf decl)
+    (fieldRef : DatatypeFieldRef decl) : Except String (Ty.LeanType fieldRef.field.ty) :=
+  by
+    match hVals : DatatypeValueOf.parseFields? v with
+    | some fields =>
+        exact .ok (by
+          simpa [DatatypeFieldRef.field] using DatatypeFieldValuesList.getAt fields fieldRef.idx)
+    | none =>
+        exact .error s!"invalid datatype value for declaration {decl.name}"
 
 /-- Parse an SMT-LIB value string to the corresponding Lean type. -/
 def Ty.parse (ty : Ty) (s : String) : Option ty.LeanType :=
@@ -406,7 +455,7 @@ inductive Expr : Ty → Type where
   | distinctBV : (n : Nat) → (names : List String) → Expr Ty.bool
 
   -- Datatype field selector
-  | dtSelect : (field : String) → (retTy : Ty) → Expr (Ty.datatype dtName) → Expr retTy
+  | dtSelect : (field : String) → (retTy : Ty) → Expr (Ty.datatype decl) → Expr retTy
 
 -- Smart constructors
 
@@ -432,13 +481,13 @@ def storeArr (arr : Expr (Ty.array idxWidth elem)) (i : Expr (Ty.bitVec idxWidth
   Expr.store arr i v
 
 /-- Select a field from a datatype value (record selector syntax in SMT-LIB). -/
-def selectField (field : String) (retTy : Ty) (rec : Expr (Ty.datatype dtName)) : Expr retTy :=
+def selectField (field : String) (retTy : Ty) (rec : Expr (Ty.datatype decl)) : Expr retTy :=
   Expr.dtSelect field retTy rec
 
 /-- Type-safe field selection using a proof-carrying field handle.
     The return type is inferred from the selected field. -/
 def selectFieldSafe {decl : DatatypeDecl} (fieldRef : DatatypeFieldRef decl)
-    (rec : Expr (Ty.datatype decl.name)) : Expr fieldRef.field.ty :=
+  (rec : Expr (Ty.datatype decl)) : Expr fieldRef.field.ty :=
   Expr.dtSelect fieldRef.field.name fieldRef.field.ty rec
 
 /-- Extract variable name from a variable expression -/

@@ -174,11 +174,11 @@ def slitherlink (spec : PuzzleSpec) (cuts : List Cut := []) : Smt Unit := do
 
 def edgeIsActive (model : Model schema) (e : EdgeVar) : Bool :=
   match model.lookup e.name with
-  | some raw =>
+  | .ok raw =>
     match parseBitVec raw 1 with
     | some bvVal => bvVal.toNat == 1
     | none => false
-  | none => false
+  | .error _ => false
 
 def activeEdges (model : Model schema) (allEdges : List EdgeVar) : List EdgeVar :=
   allEdges.filter (edgeIsActive model)

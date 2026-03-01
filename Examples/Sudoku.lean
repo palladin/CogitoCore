@@ -145,8 +145,8 @@ def displaySolution (model : Model schema) : IO Unit := do
   IO.println "Solution:"
   displayGrid <| Tensor2D.tabulate 9 9 fun r c =>
     match model.lookup s!"x_{r.val}_{c.val}" with
-    | some v => toString (parseBitVec v 4 |>.getD 0).toNat
-    | none => "?"
+    | .ok v => toString (parseBitVec v 4 |>.getD 0).toNat
+    | .error _ => "?"
 
 end Sudoku
 

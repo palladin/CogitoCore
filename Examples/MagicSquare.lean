@@ -146,11 +146,11 @@ def displayResult (result : Result (magicSquareQuery.schema)) : IO Unit := do
       for c in List.range N do
         let varName := s!"cell_{r}_{c}"
         let cellVal := match model.lookup varName with
-          | some valStr =>
+          | .ok valStr =>
             match parseBitVec valStr W with
             | some bv => toString bv.toNat
             | none => "?"
-          | none => "?"
+          | .error _ => "?"
         rowStr := rowStr ++ padCenter cellVal cellWidth ++ "│"
       IO.println rowStr
 
@@ -172,11 +172,11 @@ def displayResult (result : Result (magicSquareQuery.schema)) : IO Unit := do
       for c in List.range N do
         let varName := s!"cell_{r}_{c}"
         match model.lookup varName with
-        | some valStr =>
+        | .ok valStr =>
           match parseBitVec valStr W with
           | some bv => rowSum := rowSum + bv.toNat
           | none => pure ()
-        | none => pure ()
+        | .error _ => pure ()
       IO.println s!"  Row {r + 1}: {rowSum} ✓"
 
     -- Show column sums
@@ -185,11 +185,11 @@ def displayResult (result : Result (magicSquareQuery.schema)) : IO Unit := do
       for r in List.range N do
         let varName := s!"cell_{r}_{c}"
         match model.lookup varName with
-        | some valStr =>
+        | .ok valStr =>
           match parseBitVec valStr W with
           | some bv => colSum := colSum + bv.toNat
           | none => pure ()
-        | none => pure ()
+        | .error _ => pure ()
       IO.println s!"  Col {c + 1}: {colSum} ✓"
 
     -- Show diagonal sums
@@ -198,18 +198,18 @@ def displayResult (result : Result (magicSquareQuery.schema)) : IO Unit := do
     for i in List.range N do
       -- Main diagonal
       match model.lookup s!"cell_{i}_{i}" with
-      | some valStr =>
+      | .ok valStr =>
         match parseBitVec valStr W with
         | some bv => mainDiagSum := mainDiagSum + bv.toNat
         | none => pure ()
-      | none => pure ()
+      | .error _ => pure ()
       -- Anti-diagonal
       match model.lookup s!"cell_{i}_{N - 1 - i}" with
-      | some valStr =>
+      | .ok valStr =>
         match parseBitVec valStr W with
         | some bv => antiDiagSum := antiDiagSum + bv.toNat
         | none => pure ()
-      | none => pure ()
+      | .error _ => pure ()
     IO.println s!"  Main diagonal: {mainDiagSum} ✓"
     IO.println s!"  Anti-diagonal: {antiDiagSum} ✓"
 

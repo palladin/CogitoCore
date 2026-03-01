@@ -15,10 +15,36 @@ def PointDecl : DatatypeDecl := {
 }
 
 /-- Proof-carrying handle for field `x`. -/
-def pointXField : DatatypeFieldRef PointDecl := {
-  field := { name := "x", ty := Ty.bitVec 8 }
-  inDecl := by simp [PointDecl]
+def pointXField : DatatypeFieldRef PointDecl :=
+  PointDecl.fieldByName "x" (by simp [PointDecl, DatatypeDecl.fieldNames])
+
+/-- Inner datatype for nested-datatype examples below. -/
+def InnerDecl : DatatypeDecl := {
+  name := "Inner"
+  constructor := "mkInner"
+  fields := [
+    { name := "x", ty := Ty.bitVec 8 },
+    { name := "y", ty := Ty.bitVec 8 }
+  ]
 }
+
+/-- Outer datatype with a field that contains `Inner`. -/
+def OuterDecl : DatatypeDecl := {
+  name := "Outer"
+  constructor := "mkOuter"
+  fields := [
+    { name := "inner", ty := Ty.datatype InnerDecl },
+    { name := "tag", ty := Ty.bitVec 8 }
+  ]
+}
+
+/-- Proof-carrying handle for field `inner` on `OuterDecl`. -/
+def outerInnerField : DatatypeFieldRef OuterDecl :=
+  OuterDecl.fieldByName "inner" (by simp [OuterDecl, InnerDecl, DatatypeDecl.fieldNames])
+
+/-- Proof-carrying handle for field `x` on `InnerDecl`. -/
+def innerXField : DatatypeFieldRef InnerDecl :=
+  InnerDecl.fieldByName "x" (by simp [InnerDecl, DatatypeDecl.fieldNames])
 
 /-- 1) Basic bitvector example. -/
 def basicBV : Smt Unit := do
@@ -31,11 +57,14 @@ def inspectBasicBV : IO Unit := do
   match result with
   | .sat model =>
     IO.println "basicBV: SAT"
-    match model.get "x" (Ty.bitVec 8) with
-    | some (x : BitVec 8) =>
+    let extract : Except String (BitVec 8) := do
+      let x : BitVec 8 ← model.get "x" (Ty.bitVec 8)
+      pure x
+    match extract with
+    | .ok x =>
       IO.println s!"  x as Nat: {x.toNat}"
-    | none =>
-      IO.println "  could not decode x from model"
+    | .error err =>
+      IO.println s!"  could not decode x from model: {err}"
   | .unsat =>
     IO.println "basicBV: UNSAT"
   | .unknown reason =>
@@ -57,13 +86,16 @@ def inspectArrays : IO Unit := do
   match result with
   | .sat model =>
     IO.println "arrays: SAT"
-    match model.get "a" (Ty.array 8 (Ty.bitVec 8)) with
-    | some (arr : ArrayValue 8 (BitVec 8)) =>
+    let extract : Except String (ArrayValue 8 (BitVec 8) × BitVec 8) := do
+      let arr : ArrayValue 8 (BitVec 8) ← model.get "a" (Ty.array 8 (Ty.bitVec 8))
+      let i : BitVec 8 ← model.get "i" (Ty.bitVec 8)
+      pure (arr, i)
+    match extract with
+    | .ok (arr, i) =>
       IO.println s!"  a typed value: {Ty.showValue (Ty.array 8 (Ty.bitVec 8)) arr}"
-    | none => IO.println "  could not decode a from model"
-    match model.get "i" (Ty.bitVec 8) with
-    | some (i : BitVec 8) => IO.println s!"  i as Nat: {i.toNat}"
-    | none => IO.println "  could not decode i from model"
+      IO.println s!"  i as Nat: {i.toNat}"
+    | .error err =>
+      IO.println s!"  could not decode arrays model values: {err}"
   | .unsat =>
     IO.println "arrays: UNSAT"
   | .unknown reason =>
@@ -100,7 +132,16 @@ def datatypeSafe : Smt Unit := do
 #eval compile datatypeSafe
 #eval solve datatypeSafe
 
-/-- 6) Show typed model extraction for bitvectors and SExpr values. -/
+/-- 6) Datatype containing another datatype, selected safely. -/
+def datatypeNested : Smt Unit := do
+  let o ← declareDatatypeConstOf "o" OuterDecl
+  let inner := selectFieldSafe outerInnerField o
+  assert (selectFieldSafe innerXField inner =. bv 5 8)
+
+#eval compile datatypeNested
+#eval solve datatypeNested
+
+/-- 7) Show typed model extraction for bitvectors and SExpr values. -/
 def inspectModel : IO Unit := do
   let result ← solve datatypeSafe
   match result with
@@ -108,17 +149,45 @@ def inspectModel : IO Unit := do
     IO.println "SAT model:"
     IO.println (toString model)
     IO.println "\nTyped lookups:"
-    match model.getDatatype "p" PointDecl with
-    | some (pVal : DatatypeValueOf PointDecl) =>
-      IO.println s!"  p typed with PointDecl: {pVal}"
-      let x : BitVec 8 := pVal.getField pointXField
+    let extract : Except String (DatatypeValueOf PointDecl × BitVec 8) := do
+      let pVal : DatatypeValueOf PointDecl ← model.get "p" (Ty.datatype PointDecl)
+      let x : BitVec 8 ← pVal.getField pointXField
+      pure (pVal, x)
+    match extract with
+    | .ok (pVal, x) =>
+      IO.println s!"  p typed with PointDecl: {(show DatatypeValueOf PointDecl from pVal)}"
       IO.println s!"  p.x via pointXField: {x.toNat}"
-    | none => IO.println "  p typed with PointDecl: <decode failed>"
+    | .error err =>
+      IO.println s!"  p typed with PointDecl: <decode failed: {err}>"
   | .unsat =>
     IO.println "UNSAT"
   | .unknown reason =>
     IO.println s!"UNKNOWN: {reason}"
 
 #eval inspectModel
+
+/-- 8) Solve nested datatype example and extract nested `x` via field refs. -/
+def inspectNestedModel : IO Unit := do
+  let result ← solve datatypeNested
+  match result with
+  | .sat model =>
+    IO.println "nested datatype: SAT"
+    let extract : Except String (DatatypeValueOf OuterDecl × BitVec 8) := do
+      let oVal : DatatypeValueOf OuterDecl ← model.get "o" (Ty.datatype OuterDecl)
+      let innerVal : DatatypeValueOf InnerDecl ← oVal.getField outerInnerField
+      let x : BitVec 8 ← innerVal.getField innerXField
+      pure (oVal, x)
+    match extract with
+    | .ok (oVal, x) =>
+      IO.println s!"  o typed with OuterDecl: {(show DatatypeValueOf OuterDecl from oVal)}"
+      IO.println s!"  o.inner.x via field refs: {x.toNat}"
+    | .error err =>
+      IO.println s!"  nested extraction failed: {err}"
+  | .unsat =>
+    IO.println "nested datatype: UNSAT"
+  | .unknown reason =>
+    IO.println s!"nested datatype: UNKNOWN ({reason})"
+
+#eval inspectNestedModel
 
 end Playground

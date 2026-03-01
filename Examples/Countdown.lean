@@ -262,7 +262,7 @@ def parseBV (s : String) : Option Int :=
 def extractSolution (model : Model schema) (numInstrs : Nat) : List (Int × Int) :=
   List.range numInstrs |>.filterMap fun i =>
     match model.lookup s!"op_{i}", model.lookup s!"opr_{i}" with
-    | some opStr, some oprStr =>
+    | .ok opStr, .ok oprStr =>
       match parseBV opStr, parseBV oprStr with
       | some op, some opr => some (op, opr)
       | _, _ => none

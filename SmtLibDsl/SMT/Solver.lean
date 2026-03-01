@@ -10,19 +10,26 @@ namespace SmtLibDsl.SMT
 structure Model (vars : VarSchema) where
   raw : List (String × String)
 
-/-- Lookup a variable value by name (runtime check, raw string) -/
-def Model.lookup (m : Model vars) (name : String) : Option String :=
+/-- Lookup a variable value by name (runtime check, raw string). -/
+def Model.lookup (m : Model vars) (name : String) : Except String String :=
+  match m.raw.lookup name with
+  | some v => .ok v
+  | none => .error s!"variable '{name}' not found in model"
+
+/-- Option-style lookup compatibility helper. -/
+def Model.lookup? (m : Model vars) (name : String) : Option String :=
   m.raw.lookup name
 
-/-- Get a variable value with proof it exists in schema, parsed to Lean type -/
-def Model.get (m : Model vars) (name : String) (ty : Ty)
-    (_h : (name, ty) ∈ vars := by decide) : Option ty.LeanType :=
-  m.raw.lookup name >>= ty.parse
+/-- Get a variable value parsed to the requested Lean type with an error message on failure. -/
+def Model.get (m : Model vars) (name : String) (ty : Ty) : Except String ty.LeanType := do
+  let raw ← m.lookup name
+  match ty.parse raw with
+  | some v => .ok v
+  | none => .error s!"failed to decode '{name}' as {ty} from '{raw}'"
 
-/-- Get a datatype value using its declaration for fully typed field decoding. -/
-def Model.getDatatype (m : Model vars) (name : String) (decl : DatatypeDecl)
-    (_h : (name, Ty.datatype decl.name) ∈ vars := by decide) : Option (DatatypeValueOf decl) :=
-  m.raw.lookup name >>= decl.parseValue
+/-- Option-style parse compatibility helper. -/
+def Model.get? (m : Model vars) (name : String) (ty : Ty) : Option ty.LeanType :=
+  m.raw.lookup name >>= ty.parse
 
 instance : ToString (Model vars) where
   toString m := toString m.raw

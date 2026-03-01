@@ -345,7 +345,9 @@ def parseDir (s : String) : Option Nat :=
 /-- Extract solution moves from model -/
 def extractMoves (model : Model schema) (maxSteps : Nat) : List Nat :=
   List.range maxSteps |>.filterMap fun t =>
-    model.lookup s!"dir_{t}" >>= parseDir
+    match model.lookup s!"dir_{t}" with
+    | .ok dir => parseDir dir
+    | .error _ => none
 
 /-- Check if position is in list -/
 def posInList (pos : Nat × Nat) (lst : List (Nat × Nat)) : Bool :=
