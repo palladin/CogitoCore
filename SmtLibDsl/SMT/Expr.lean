@@ -154,12 +154,41 @@ def Ty.LeanType : Ty → Type
   | Ty.array idxWidth elem => ArrayValue idxWidth (Ty.LeanType elem)
   | Ty.datatype _ => DatatypeValue
 
-def DatatypeFieldValues : List DatatypeField → Type
+private def DatatypeFieldValuesList : List DatatypeField → Type
   | [] => PUnit
-  | f :: fs => Ty.LeanType f.ty × DatatypeFieldValues fs
+  | f :: fs => Ty.LeanType f.ty × DatatypeFieldValuesList fs
+
+/-- Typed field values for a datatype declaration, indexed by `decl.fields`. -/
+def DatatypeFieldValues (decl : DatatypeDecl) : Type :=
+  DatatypeFieldValuesList decl.fields
 
 structure DatatypeValueOf (decl : DatatypeDecl) where
-  fields : DatatypeFieldValues decl.fields
+  fields : DatatypeFieldValues decl
+
+private def DatatypeFieldValuesList.get
+    : {fields : List DatatypeField} →
+      DatatypeFieldValuesList fields →
+      (target : DatatypeField) →
+      target ∈ fields →
+      Ty.LeanType target.ty
+  | [], _, _, h => nomatch h
+  | f :: fs, (v, rest), target, h =>
+      if hEq : target = f then
+        by
+          cases hEq
+          simpa using v
+      else
+        let hTail : target ∈ fs := by
+          cases h with
+          | head _ => exact False.elim (hEq rfl)
+          | tail _ hTail => exact hTail
+        DatatypeFieldValuesList.get rest target hTail
+
+/-- Extract a typed datatype field value using a proof-carrying field handle. -/
+def DatatypeValueOf.getField {decl : DatatypeDecl}
+    (v : DatatypeValueOf decl)
+    (fieldRef : DatatypeFieldRef decl) : Ty.LeanType fieldRef.field.ty :=
+  DatatypeFieldValuesList.get v.fields fieldRef.field fieldRef.inDecl
 
 mutual
 
@@ -177,7 +206,7 @@ partial def ArrayValue.show (idxWidth : Nat) (elem : Ty) : ArrayValue idxWidth (
 
 end
 
-partial def showFieldValues : (fields : List DatatypeField) → DatatypeFieldValues fields → List String
+partial def showFieldValues : (fields : List DatatypeField) → DatatypeFieldValuesList fields → List String
   | [], _ => []
   | f :: fs, (v, rest) => s!"{f.name}: {Ty.showValue f.ty v}" :: showFieldValues fs rest
 
@@ -265,7 +294,7 @@ partial def ArrayValue.parseSExpr (idxWidth : Nat) (elem : Ty) : SExpr → Optio
 
 end
 
-partial def parseFieldValuesSExpr : (fields : List DatatypeField) → List SExpr → Option (DatatypeFieldValues fields)
+partial def parseFieldValuesSExpr : (fields : List DatatypeField) → List SExpr → Option (DatatypeFieldValuesList fields)
   | [], [] => some PUnit.unit
   | f :: fs, arg :: rest => do
       let v ← Ty.parseSExpr f.ty arg

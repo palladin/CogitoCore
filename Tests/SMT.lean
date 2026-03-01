@@ -118,6 +118,28 @@ def tyTests : TestSeq :=
       let raw := "(mkPoint #x03 #x04)"
       let parsed : Option DatatypeValue := Ty.parse (Ty.datatype "Point") raw
       parsed.isSome
+    ) $
+    test "parse datatype value and extract typed field" (
+      let point : DatatypeDecl := {
+        name := "Point"
+        constructor := "mkPoint"
+        fields := [
+          { name := "x", ty := Ty.bitVec 8 },
+          { name := "y", ty := Ty.bitVec 8 }
+        ]
+      }
+      let xField : DatatypeFieldRef point := {
+        field := { name := "x", ty := Ty.bitVec 8 }
+        inDecl := by simp [point]
+      }
+      let parsed := point.parseValue "(mkPoint #x03 #x04)"
+      let ok : Bool :=
+        match parsed with
+        | some p =>
+          let x : BitVec 8 := p.getField xField
+          x.toNat == 3
+        | none => false
+      ok
     )
 
 -- Test compileCmd

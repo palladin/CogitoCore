@@ -109,7 +109,10 @@ def inspectModel : IO Unit := do
     IO.println (toString model)
     IO.println "\nTyped lookups:"
     match model.getDatatype "p" PointDecl with
-    | some (pVal : DatatypeValueOf PointDecl) => IO.println s!"  p typed with PointDecl: {pVal}"
+    | some (pVal : DatatypeValueOf PointDecl) =>
+      IO.println s!"  p typed with PointDecl: {pVal}"
+      let x : BitVec 8 := pVal.getField pointXField
+      IO.println s!"  p.x via pointXField: {x.toNat}"
     | none => IO.println "  p typed with PointDecl: <decode failed>"
   | .unsat =>
     IO.println "UNSAT"
