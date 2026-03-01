@@ -86,7 +86,7 @@ def compileExprTests : TestSeq :=
       let p : Expr (Ty.datatype point) := Expr.var "p" (Ty.datatype point)
       let xField : DatatypeFieldRef point :=
         point.fieldByName "x" (by simp [point, DatatypeDecl.fieldNames])
-      compileExpr (selectFieldSafe xField p) = "(x p)"
+      compileExpr (selectField xField p) = "(x p)"
     ) $
     test "nested const array" (
       let inner : Expr (Ty.array 4 (Ty.bitVec 8)) := constArray 4 (Ty.bitVec 8) (bv 0 8)
@@ -242,7 +242,7 @@ def compileTests : TestSeq :=
         point.fieldByName "x" (by simp [point, DatatypeDecl.fieldNames])
       let prog : Smt Unit := do
         let p ← declareDatatypeConstOf "p" point
-        assert (selectFieldSafe xField p =. bv 3 8)
+        assert (selectField xField p =. bv 3 8)
       compile prog = "(set-logic ALL)\n(declare-datatype Point ((mkPoint (x (_ BitVec 8)) (y (_ BitVec 8)))))\n(declare-const p Point)\n(assert (= (x p) (_ bv3 8)))\n(check-sat)\n(get-model)"
     ) $
     test "datatype program safe explicit declaration" (
@@ -258,7 +258,7 @@ def compileTests : TestSeq :=
         point.fieldByName "x" (by simp [point, DatatypeDecl.fieldNames])
       let prog : Smt Unit := do
         let p ← declareDatatypeConstOf "p" point
-        assert (selectFieldSafe xField p =. bv 3 8)
+        assert (selectField xField p =. bv 3 8)
       compile prog = "(set-logic ALL)\n(declare-datatype Point ((mkPoint (x (_ BitVec 8)) (y (_ BitVec 8)))))\n(declare-const p Point)\n(assert (= (x p) (_ bv3 8)))\n(check-sat)\n(get-model)"
     ) $
     test "datatype program safe implicit declaration" (
@@ -274,7 +274,7 @@ def compileTests : TestSeq :=
         point.fieldByName "x" (by simp [point, DatatypeDecl.fieldNames])
       let prog : Smt Unit := do
         let p ← declareDatatypeConstOf "p" point
-        assert (selectFieldSafe xField p =. bv 3 8)
+        assert (selectField xField p =. bv 3 8)
       compile prog = "(set-logic ALL)\n(declare-datatype Point ((mkPoint (x (_ BitVec 8)) (y (_ BitVec 8)))))\n(declare-const p Point)\n(assert (= (x p) (_ bv3 8)))\n(check-sat)\n(get-model)"
     ) $
     test "nested datatype program safe" (
@@ -300,8 +300,8 @@ def compileTests : TestSeq :=
         inner.fieldByName "x" (by simp [inner, DatatypeDecl.fieldNames])
       let prog : Smt Unit := do
         let o ← declareDatatypeConstOf "o" outer
-        let i := selectFieldSafe outerInnerField o
-        assert (selectFieldSafe innerXField i =. bv 5 8)
+        let i := selectField outerInnerField o
+        assert (selectField innerXField i =. bv 5 8)
       compile prog = "(set-logic ALL)\n(declare-datatype Inner ((mkInner (x (_ BitVec 8)) (y (_ BitVec 8)))))\n(declare-datatype Outer ((mkOuter (inner Inner) (tag (_ BitVec 8)))))\n(declare-const o Outer)\n(assert (= (x (inner o)) (_ bv5 8)))\n(check-sat)\n(get-model)"
     ) $
     test "nested array program" (
