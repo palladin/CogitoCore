@@ -480,13 +480,9 @@ def selectArr (arr : Expr (Ty.array idxWidth elem)) (i : Expr (Ty.bitVec idxWidt
 def storeArr (arr : Expr (Ty.array idxWidth elem)) (i : Expr (Ty.bitVec idxWidth)) (v : Expr elem) : Expr (Ty.array idxWidth elem) :=
   Expr.store arr i v
 
-/-- Select a field from a datatype value (record selector syntax in SMT-LIB). -/
-def selectField (field : String) (retTy : Ty) (rec : Expr (Ty.datatype decl)) : Expr retTy :=
-  Expr.dtSelect field retTy rec
-
-/-- Type-safe field selection using a proof-carrying field handle.
-    The return type is inferred from the selected field. -/
-def selectFieldSafe {decl : DatatypeDecl} (fieldRef : DatatypeFieldRef decl)
+/-- Field selection using a proof-carrying field handle.
+  The return type is inferred from the selected field. -/
+def selectField {decl : DatatypeDecl} (fieldRef : DatatypeFieldRef decl)
   (rec : Expr (Ty.datatype decl)) : Expr fieldRef.field.ty :=
   Expr.dtSelect fieldRef.field.name fieldRef.field.ty rec
 

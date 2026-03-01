@@ -116,34 +116,26 @@ def nestedArrays : Smt Unit := do
 #eval compile nestedArrays
 #eval solve nestedArrays
 
-/-- 4) Datatype with string selector API. -/
+/-- 4) Datatype selected with a field handle. -/
 def datatypeSimple : Smt Unit := do
   let p ← declareDatatypeConstOf "p" PointDecl
-  assert (selectField "x" (Ty.bitVec 8) p =. bv 3 8)
+  assert (selectField pointXField p =. bv 3 8)
 
 #eval compile datatypeSimple
 #eval solve datatypeSimple
 
-/-- 5) Datatype with dependent-safe selector API. -/
-def datatypeSafe : Smt Unit := do
-  let p ← declareDatatypeConstOf "p" PointDecl
-  assert (selectFieldSafe pointXField p =. bv 3 8)
-
-#eval compile datatypeSafe
-#eval solve datatypeSafe
-
-/-- 6) Datatype containing another datatype, selected safely. -/
+/-- 5) Datatype containing another datatype, selected by field handles. -/
 def datatypeNested : Smt Unit := do
   let o ← declareDatatypeConstOf "o" OuterDecl
-  let inner := selectFieldSafe outerInnerField o
-  assert (selectFieldSafe innerXField inner =. bv 5 8)
+  let inner := selectField outerInnerField o
+  assert (selectField innerXField inner =. bv 5 8)
 
 #eval compile datatypeNested
 #eval solve datatypeNested
 
-/-- 7) Show typed model extraction for bitvectors and SExpr values. -/
+/-- 6) Show typed model extraction for bitvectors and SExpr values. -/
 def inspectModel : IO Unit := do
-  let result ← solve datatypeSafe
+  let result ← solve datatypeSimple
   match result with
   | .sat model =>
     IO.println "SAT model:"
@@ -166,7 +158,7 @@ def inspectModel : IO Unit := do
 
 #eval inspectModel
 
-/-- 8) Solve nested datatype example and extract nested `x` via field refs. -/
+/-- 7) Solve nested datatype example and extract nested `x` via field refs. -/
 def inspectNestedModel : IO Unit := do
   let result ← solve datatypeNested
   match result with

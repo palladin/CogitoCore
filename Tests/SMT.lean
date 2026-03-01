@@ -74,18 +74,6 @@ def compileExprTests : TestSeq :=
     -- Distinct constraint
     test "distinctBV" (compileExpr (Expr.distinctBV 8 ["x", "y", "z"]) = "(distinct x y z)") $
     -- Datatype selectors
-    test "datatype selector" (
-      let point : DatatypeDecl := {
-        name := "Point"
-        constructor := "mkPoint"
-        fields := [
-          { name := "x", ty := Ty.bitVec 8 },
-          { name := "y", ty := Ty.bitVec 8 }
-        ]
-      }
-      let p : Expr (Ty.datatype point) := Expr.var "p" (Ty.datatype point)
-      compileExpr (selectField "x" (Ty.bitVec 8) p) = "(x p)"
-    ) $
     test "datatype selector safe" (
       let point : DatatypeDecl := {
         name := "Point"
@@ -241,7 +229,7 @@ def compileTests : TestSeq :=
         assert (x =. bv 5 8)
       compile prog = "(set-logic QF_ABV)\n(declare-const x (_ BitVec 8))\n(assert (= x (_ bv5 8)))\n(check-sat)\n(get-model)"
     ) $
-    test "datatype program" (
+    test "datatype program safe" (
       let point : DatatypeDecl := {
         name := "Point"
         constructor := "mkPoint"
@@ -250,12 +238,14 @@ def compileTests : TestSeq :=
           { name := "y", ty := Ty.bitVec 8 }
         ]
       }
+      let xField : DatatypeFieldRef point :=
+        point.fieldByName "x" (by simp [point, DatatypeDecl.fieldNames])
       let prog : Smt Unit := do
         let p ← declareDatatypeConstOf "p" point
-        assert (selectField "x" (Ty.bitVec 8) p =. bv 3 8)
+        assert (selectFieldSafe xField p =. bv 3 8)
       compile prog = "(set-logic ALL)\n(declare-datatype Point ((mkPoint (x (_ BitVec 8)) (y (_ BitVec 8)))))\n(declare-const p Point)\n(assert (= (x p) (_ bv3 8)))\n(check-sat)\n(get-model)"
     ) $
-    test "datatype program safe" (
+    test "datatype program safe explicit declaration" (
       let point : DatatypeDecl := {
         name := "Point"
         constructor := "mkPoint"
