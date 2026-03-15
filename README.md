@@ -56,6 +56,11 @@ def findX : Smt Unit := do
   sudo apt-get install z3
   ```
 
+  To upgrade an existing installation:
+  ```bash
+  ./scripts/setup.sh --upgrade-z3
+  ```
+
 ### Build
 
 ```bash
