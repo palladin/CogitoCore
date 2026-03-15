@@ -387,6 +387,7 @@ inductive Expr : Ty → Type where
   | or      : Expr Ty.bool → Expr Ty.bool → Expr Ty.bool
   | not     : Expr Ty.bool → Expr Ty.bool
   | imp     : Expr Ty.bool → Expr Ty.bool → Expr Ty.bool
+  | boolEq  : Expr Ty.bool → Expr Ty.bool → Expr Ty.bool
   | ite : Expr Ty.bool → Expr s → Expr s → Expr s
 
   -- BitVector literals
@@ -451,6 +452,9 @@ inductive Expr : Ty → Type where
   | store   : Expr (Ty.array idxWidth elem) → Expr (Ty.bitVec idxWidth) → Expr elem → Expr (Ty.array idxWidth elem)
   | arrEq   : Expr (Ty.array idxWidth elem) → Expr (Ty.array idxWidth elem) → Expr Ty.bool
 
+  -- Datatype equality
+  | dtEq    : Expr (Ty.datatype decl) → Expr (Ty.datatype decl) → Expr Ty.bool
+
   -- Distinct constraint (names stored directly to avoid nested inductive issue)
   | distinctBV : (n : Nat) → (names : List String) → Expr Ty.bool
 
@@ -501,6 +505,20 @@ def distinct (es : List (Expr (Ty.bitVec n))) : Expr Ty.bool :=
 def distinctV (es : Vector (Expr (Ty.bitVec n)) m) : Expr Ty.bool :=
   distinct es.toList
 
+class HasSmtEq (s : Ty) where
+  eqExpr : Expr s → Expr s → Expr Ty.bool
+
+instance (s : Ty) : HasSmtEq s where
+  eqExpr := by
+    cases s with
+    | bool => exact Expr.boolEq
+    | bitVec _ => exact Expr.bvEq
+    | array _ _ => exact Expr.arrEq
+    | datatype _ => exact Expr.dtEq
+
+def smtEq {s : Ty} [HasSmtEq s] (lhs rhs : Expr s) : Expr Ty.bool :=
+  HasSmtEq.eqExpr lhs rhs
+
 -- Notation (scoped to SMT namespace)
 
 /-
@@ -510,7 +528,7 @@ def distinctV (es : Vector (Expr (Ty.bitVec n)) m) : Expr Ty.bool :=
     - `ᵤ` = unsigned (e.g., `<.ᵤ` unsigned less-than)
     - `ₛ` = signed (e.g., `<.ₛ` signed less-than)
     - `ₐ` = array (e.g., `=.ₐ` array equality)
-  - No subscript = only one variant exists (e.g., `=.` bitvector equality)
+  - No subscript = sort-directed operator (e.g., `=.` for bool/bitvector/array equality)
 -/
 
 -- BitVector arithmetic
@@ -530,7 +548,7 @@ scoped infixl:55 " >>. " => Expr.bvLShr
 scoped infixl:55 " >>>.ₛ " => Expr.bvAShr
 
 -- Equality
-scoped infixl:50 " =. " => Expr.bvEq
+scoped infixl:50 " =. " => smtEq
 scoped infixl:50 " =.ₐ " => Expr.arrEq
 
 -- Unsigned comparisons

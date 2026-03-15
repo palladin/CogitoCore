@@ -1,0 +1,3 @@
+-- Reassigns x to demonstrate sequential updates and SSA versioning.
+x := 1;
+x := x + 2

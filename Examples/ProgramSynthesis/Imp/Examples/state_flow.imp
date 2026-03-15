@@ -1,0 +1,8 @@
+-- Carries values through multiple assignments before a final conditional update of y.
+z := x + y;
+x := z * 2;
+if x < z then {
+  y := 1
+} else {
+  y := x - z
+}

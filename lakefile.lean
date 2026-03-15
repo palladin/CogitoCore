@@ -14,7 +14,7 @@ lean_lib «SmtLibDsl» where
 
 lean_lib «Examples» where
   -- Examples library for shared modules
-  roots := #[`Examples.SokobanLevels]
+  roots := #[`Examples.SokobanLevels, `Examples.ProgramSynthesis.Imp]
 
 @[default_target]
 lean_exe «smtlibdsl» where
@@ -40,6 +40,9 @@ lean_exe «minesweeper» where
 
 lean_exe «countdown» where
   root := `Examples.Countdown
+
+lean_exe «imp» where
+  root := `Examples.ProgramSynthesis.Imp
 
 lean_exe «magicsquare» where
   root := `Examples.MagicSquare

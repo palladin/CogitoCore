@@ -211,6 +211,7 @@ x ≤.ₛ y    -- signed less-or-equal
 
 **Boolean**:
 ```lean
+a =. b    -- equality
 a ∧. b    -- and
 a ∨. b    -- or
 ¬. a      -- not
@@ -249,6 +250,17 @@ Examples/
 ├── MagicSquare.lean       -- Magic square solver
 ├── Countdown.lean         -- Countdown numbers game
 ├── Minesweeper.lean       -- Minesweeper auto-solver
+├── ProgramSynthesis/
+│   ├── Imp.lean           -- IMP CLI entry point
+│   └── Imp/
+│       ├── Syntax.lean    -- IMP AST, environment helpers, interpreter
+│       ├── Parser.lean    -- Tokenizer and recursive-descent parser
+│       ├── Compiler.lean  -- SSA-based SMT compiler
+│       └── Examples/
+│           ├── increment_then_branch.imp
+│           ├── reassignment.imp
+│           ├── branch.imp
+│           └── state_flow.imp
 ├── Sokoban.lean           -- Sokoban puzzle solver
 ├── SokobanLevels.lean     -- Original 90 Sokoban levels
 ├── Slitherlink.lean       -- Slitherlink loop puzzle solver
@@ -283,6 +295,12 @@ Finds an n×n grid where all rows, columns, and diagonals sum to the magic const
 lake exe countdown
 ```
 Synthesizes arithmetic expressions using RPN stack-based evaluation.
+
+### IMP Program Example
+```bash
+lake exe imp Examples/ProgramSynthesis/Imp/Examples/increment_then_branch.imp
+```
+Parses a small IMP program from a `.imp` file and compiles it to SSA-style SMT-LIB2 with explicit `ssa_*` temporaries and branch merges via `ite`.
 
 ### Minesweeper
 ```bash

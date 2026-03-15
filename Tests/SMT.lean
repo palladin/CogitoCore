@@ -4,9 +4,13 @@
 -/
 import LSpec
 import SmtLibDsl.SMT
+import Examples.ProgramSynthesis.Imp.Syntax
+import Examples.ProgramSynthesis.Imp.Parser
+import Examples.ProgramSynthesis.Imp.Compiler
 
 open SmtLibDsl.SMT
 open LSpec
+open ProgramSynthesis.Imp
 
 -- Test compileExpr for various expression types
 def compileExprTests : TestSeq :=
@@ -23,6 +27,7 @@ def compileExprTests : TestSeq :=
     test "and" (compileExpr (Expr.and Expr.btrue Expr.bfalse) = "(and true false)") $
     test "or" (compileExpr (Expr.or Expr.btrue Expr.bfalse) = "(or true false)") $
     test "not" (compileExpr (Expr.not Expr.btrue) = "(not true)") $
+    test "bool equality" (compileExpr (Expr.btrue =. Expr.bfalse) = "(= true false)") $
     test "imp" (compileExpr (Expr.imp Expr.btrue Expr.bfalse) = "(=> true false)") $
     -- BitVector arithmetic
     test "bvAdd" (compileExpr (Expr.bvAdd (bv 1 8) (bv 2 8)) = "(bvadd (_ bv1 8) (_ bv2 8))") $
@@ -315,9 +320,58 @@ def compileTests : TestSeq :=
       compile prog = "(set-logic QF_ABV)\n(declare-const a (Array (_ BitVec 8) (Array (_ BitVec 4) (_ BitVec 8))))\n(declare-const i (_ BitVec 8))\n(declare-const j (_ BitVec 4))\n(assert (= (select (select a i) j) (_ bv3 8)))\n(check-sat)\n(get-model)"
     )
 
+def impTokenizeOk : Bool :=
+  match tokenize "x := 1; skip" with
+  | .ok tokens => tokens == [
+      .ident "x", .assign, .natLit 1, .semi, .kwSkip
+    ]
+  | .error _ => false
+
+def impParseArithmeticOk : Bool :=
+  match parseProgram "x := 1 + 2 * 3" with
+  | .ok stmt =>
+    stmt == Stmt.assign "x" (AExpr.add (AExpr.const 1) (AExpr.mul (AExpr.const 2) (AExpr.const 3)))
+  | .error _ => false
+
+def impParseIfOk : Bool :=
+  match parseProgram "if x < y then { z := x + 1 } else { z := y - 1 }" with
+  | .ok stmt =>
+    stmt == Stmt.ite
+      (BExpr.lt (AExpr.var "x") (AExpr.var "y"))
+      (Stmt.assign "z" (AExpr.add (AExpr.var "x") (AExpr.const 1)))
+      (Stmt.assign "z" (AExpr.sub (AExpr.var "y") (AExpr.const 1)))
+  | .error _ => false
+
+def impInterpreterOk : Bool :=
+  match parseProgram "x := x + 1; if x < y then { z := x * 2 } else { z := y - x }" with
+  | .ok program =>
+    let finalEnv := evalStmt [("x", 4), ("y", 5), ("z", 0)] program
+    lookupEnvD finalEnv "z" 0 == 0
+  | .error _ => false
+
+def impCompilerShapeOk : Bool :=
+  match parseProgram "x := x + 1; if x < y then { z := x * 2 } else { z := y - x }" with
+  | .ok program =>
+    let script := compile (compiledProgram program)
+    let hasIte := List.length (String.splitOn script "(ite ") > 1
+    let hasInput := List.length (String.splitOn script "(declare-const x (_ BitVec 8))") > 1
+    let hasZeroInit := List.length (String.splitOn script "(assert (= x (_ bv0 8)))") > 1
+    let hasSsa := List.length (String.splitOn script "(declare-const ssa_") > 1
+    let noOut := List.length (String.splitOn script "(declare-const out_") == 1
+    hasIte && hasInput && hasZeroInit && hasSsa && noOut
+  | .error _ => false
+
+def impTests : TestSeq :=
+  group "imp" $
+    test "tokenize assignment and skip" (impTokenizeOk = true) $
+    test "parse precedence in arithmetic" (impParseArithmeticOk = true) $
+    test "parse if with blocks" (impParseIfOk = true) $
+    test "interpreter computes sample program" (impInterpreterOk = true) $
+    test "compiler emits SSA and ite" (impCompilerShapeOk = true)
+
 -- All tests
 def allTests : TestSeq :=
-  tyTests ++ compileExprTests ++ compileCmdTests ++ compileTests
+  tyTests ++ compileExprTests ++ compileCmdTests ++ compileTests ++ impTests
 
 -- Main entry point for running tests
 def main : IO UInt32 := do

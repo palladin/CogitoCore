@@ -14,6 +14,7 @@ def main (args : List String) : IO UInt32 := do
     IO.println "  lake exe life        - Conway's Game of Life (Knuth's TAOCP)"
     IO.println "  lake exe minesweeper - Minesweeper auto-solver"
     IO.println "  lake exe countdown   - Countdown numbers game solver"
+    IO.println "  lake exe imp         - IMP interpreter/parser/compiler example"
     IO.println "  lake exe magicsquare - Magic square solver"
     IO.println "  lake exe sokoban     - Sokoban puzzle solver"
     IO.println "  lake exe slitherlink - Slitherlink loop puzzle solver"
@@ -36,6 +37,8 @@ def main (args : List String) : IO UInt32 := do
     IO.println "Run: lake exe minesweeper"
   | "countdown" =>
     IO.println "Run: lake exe countdown"
+  | "imp" =>
+    IO.println "Run: lake exe imp"
   | "magicsquare" =>
     IO.println "Run: lake exe magicsquare"
   | "sokoban" =>

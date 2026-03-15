@@ -1,0 +1,6 @@
+-- Chooses between incrementing x and replacing it with y - x based on x < y.
+if x < y then {
+  x := x + 1
+} else {
+  x := y - x
+}

@@ -17,6 +17,7 @@ def compileExpr : Expr ty → String
   | .or l r => s!"(or {compileExpr l} {compileExpr r})"
   | .not e => s!"(not {compileExpr e})"
   | .imp l r => s!"(=> {compileExpr l} {compileExpr r})"
+  | .boolEq l r => s!"(= {compileExpr l} {compileExpr r})"
   | .ite c t e => s!"(ite {compileExpr c} {compileExpr t} {compileExpr e})"
   -- BitVector arithmetic
   | .bvAdd l r => s!"(bvadd {compileExpr l} {compileExpr r})"
@@ -70,6 +71,7 @@ def compileExpr : Expr ty → String
   | .select arr i => s!"(select {compileExpr arr} {compileExpr i})"
   | .store arr i v => s!"(store {compileExpr arr} {compileExpr i} {compileExpr v})"
   | .arrEq l r => s!"(= {compileExpr l} {compileExpr r})"
+  | .dtEq l r => s!"(= {compileExpr l} {compileExpr r})"
   -- Distinct constraint
   | .distinctBV _ names => s!"(distinct {names |> String.intercalate " "})"
   -- Datatype field selector
