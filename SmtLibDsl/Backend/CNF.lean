@@ -98,7 +98,7 @@ QF_BV program.  Explicit proxy equalities keep every source model bit visible
 in the resulting propositional goal. -/
 def compileCnfBridgeScript (smt : Smt .bv Unit) : Except String String := do
   let bits ← pendingBits smt.schema
-  let body := compileCommands smt
+  let body := Compiler.compileCommandsWithCSE smt
   let proxies := proxyCommands bits
   let commands :=
     if body.isEmpty then proxies

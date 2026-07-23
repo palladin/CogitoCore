@@ -2,7 +2,7 @@
   SmtLibDsl - SMT-LIB BitVector Theory DSL
   Compilation to SMT-LIB2 string format
 -/
-import SmtLibDsl.SMT.Cmd
+import SmtLibDsl.SMT.CSE
 
 namespace SmtLibDsl.SMT
 
@@ -141,15 +141,24 @@ partial def compileCommands : Smt lang Unit → String
     let rest := compileCommands (f a)
     if rest.isEmpty then s else s ++ "\n" ++ rest
 
-/-- Compile a language-indexed SMT program to SMT-LIB2. -/
-partial def compile (smt : Smt lang Unit) : String :=
+/-- Compile a language-indexed SMT program to SMT-LIB2 and expose CSE
+statistics for profiling. -/
+partial def compileWithCSEReport (smt : Smt lang Unit) : Compiler.CompiledCommands :=
   let logic := lang.smtLogic
   let datatypeDecls := String.intercalate "\n" ((smt.collectDatatypeDecls).map DatatypeDecl.toSmtLib)
-  let body := compileCommands smt
+  let bodyReport := Compiler.compileCommandsWithCSEReport smt
+  let body := bodyReport.text
   let commandBody :=
     if datatypeDecls.isEmpty then body
     else if body.isEmpty then datatypeDecls
     else datatypeDecls ++ "\n" ++ body
-  s!"(set-logic {logic})\n{commandBody}\n(check-sat)\n(get-model)"
+  {
+    text := s!"(set-logic {logic})\n{commandBody}\n(check-sat)\n(get-model)"
+    stats := bodyReport.stats
+  }
+
+/-- Compile a language-indexed SMT program to SMT-LIB2. -/
+partial def compile (smt : Smt lang Unit) : String :=
+  (compileWithCSEReport smt).text
 
 end SmtLibDsl.SMT

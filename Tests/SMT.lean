@@ -381,6 +381,48 @@ def leanModelCheckerOk : Bool :=
     | .error _ => true
   goodAccepted && badRejected
 
+def cseProgram : Smt .bv Unit := do
+  let x ← declareBV "cse_x" 8
+  let shared : Expr .bv (Ty.bitVec 8) := x +. (bv 1 8 : Expr .bv (Ty.bitVec 8))
+  assert (shared =. bv 2 8)
+  assert (shared =. bv 3 8)
+
+def cseSharingOk : Bool :=
+  let report := Compiler.compileCommandsWithCSEReport cseProgram
+  report.stats.occurrences == 10 &&
+    report.stats.uniqueNodes == 7 &&
+    report.stats.reusedOccurrences == 3 &&
+    report.stats.sharedNodes == 1 &&
+    report.text.contains "(define-fun __smtlibdsl_cse_2 () (_ BitVec 8) (bvadd cse_x (_ bv1 8)))" &&
+    report.text.contains "(assert (= __smtlibdsl_cse_2 (_ bv2 8)))" &&
+    report.text.contains "(assert (= __smtlibdsl_cse_2 (_ bv3 8)))"
+
+/-- Force every expression key into one hash bucket and verify that structural
+equality, rather than the fingerprint alone, selects the dependent value. -/
+def cseHashCollisionOk : Bool :=
+  letI : Hashable (Compiler.ExprKey .bv) := ⟨fun _ => 0⟩
+  let lhs : Compiler.ExprKey .bv := {
+    ty := .bool
+    op := .and
+    children := [1, 2]
+  }
+  let rhs : Compiler.ExprKey .bv := {
+    ty := .bool
+    op := .or
+    children := [1, 2]
+  }
+  let memo : Compiler.ExpressionMemo .bv := {}
+  let memo := memo.insert lhs (⟨11⟩ : Compiler.Ref .bv lhs.ty)
+  let memo := memo.insert rhs (⟨22⟩ : Compiler.Ref .bv rhs.ty)
+  match memo.get? lhs, memo.get? rhs with
+  | some l, some r => l.id == 11 && r.id == 22
+  | _, _ => false
+
+def cseTests : TestSeq :=
+  group "type-indexed CSE" $
+    test "shares repeated expressions once" (cseSharingOk = true) $
+    test "hash collisions still use structural equality" (cseHashCollisionOk = true)
+
 /-- A capability-polymorphic BV fragment composes in both `.bv` and `.abv`
 programs, while array commands remain unavailable in `.bv`. -/
 def reusableBvFragment [Language.HasBV lang] : Smt lang Unit := do
@@ -640,7 +682,8 @@ def impTests : TestSeq :=
 
 -- All tests
 def allTests : TestSeq :=
-  tyTests ++ compileExprTests ++ compileCmdTests ++ compileTests ++ cnfTests ++ impTests
+  tyTests ++ compileExprTests ++ compileCmdTests ++ compileTests ++ cnfTests ++
+    cseTests ++ impTests
 
 -- Main entry point for running tests
 def main : IO UInt32 := do

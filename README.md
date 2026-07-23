@@ -10,6 +10,8 @@ SmtLibDsl is a domain-specific language embedded in Lean 4 for writing SMT-LIB2 
 - **Type-safe expressions** — Bitvector widths and enabled SMT theories are tracked at compile time
 - **Language-indexed free monad** — `Smt .bool`, `Smt .bv`, `Smt .abv`, and `Smt .all` compose only valid commands
 - **SMT-LIB2 code generation** — Generates standards-compliant solver input
+- **Typed expression CSE** — Repeated terms become deterministic `define-fun`
+  bindings through a collision-safe, language-indexed memo
 - **Generic SMT backends** — Use the same typed API with Z3, cvc5, or a custom backend
 - **Checked SAT path** — Z3 bit-blasts QF_BV to CNF, Kissat solves DIMACS, and Lean validates every decoded SAT model
 
@@ -193,6 +195,34 @@ def withMemory : Smt .abv Unit := do
 
 The mapped-CNF SAT pipeline deliberately accepts only `Smt .bv Unit`, so arrays
 and datatypes cannot accidentally reach the bit-blasting pipeline.
+
+## Type-indexed compiler CSE
+
+Compilation fingerprints canonical expression nodes and shares repeated
+subexpressions without introducing a second source-language AST. The memo value
+type depends on the key's result sort:
+
+```lean
+abbrev ExpressionMemo (lang : Language) : Type :=
+  Std.DHashMap (ExprKey lang) (fun key => Ref lang key.ty)
+```
+
+Consequently, looking up a Boolean key can only return `Ref lang .bool`, while
+a bitvector key returns a reference of that exact bitvector sort. Hashes only
+select a `DHashMap` bucket; lawful structural equality over the operator, sort,
+parameters, and canonical children selects the entry, so a hash collision
+cannot merge distinct expressions.
+
+Both `compile` and the SMT→CNF bridge use this pass. The original `Smt` program
+remains the source for model schemas and Lean model replay. Profiling data is
+available without a second compilation:
+
+```lean
+let report := compileWithCSEReport query
+IO.println report.text
+IO.println s!"{report.stats.uniqueNodes} unique nodes"
+IO.println s!"{report.stats.emittedDefinitions} shared definitions"
+```
 
 ## Language-indexed solver API
 
@@ -429,6 +459,7 @@ SmtLibDsl/
 └── SMT/
     ├── Expr.lean          -- Type-indexed SMT expressions
     ├── Cmd.lean           -- SMT commands & Smt monad
+    ├── CSE.lean           -- Typed structural memo and DAG-shaped emission
     ├── Compile.lean       -- Compile to SMT-LIB2
     ├── Model.lean         -- Portable models and SMT-LIB result parser
     ├── Solver.lean        -- Re-export of the indexed Solver API

@@ -101,7 +101,8 @@ def runSmtBackend [SmtBackend backend] [SupportsLanguage backend lang]
     (backend : backend) (smt : Smt lang Unit) (config : SolveConfig := {}) :
     IO (Result smt.schema) := do
   let compileStart ← IO.monoNanosNow
-  let script := compile smt
+  let compiled := compileWithCSEReport smt
+  let script := compiled.text
   -- `compile` is pure, so Lean may otherwise delay it until the backend first
   -- consumes `script`, incorrectly charging compilation to solver time.
   if script.isEmpty then
@@ -127,6 +128,9 @@ def runSmtBackend [SmtBackend backend] [SupportsLanguage backend lang]
     IO.println (String.ofList (List.replicate 40 '─'))
     IO.println s!"  SMT file size: {scriptBytes} bytes ({scriptBytes.toFloat / 1024.0}KB)"
     IO.println s!"  Compile time: {compileMs}ms"
+    IO.println s!"  CSE nodes: {compiled.stats.uniqueNodes} unique / \
+      {compiled.stats.occurrences} occurrences"
+    IO.println s!"  Shared definitions: {compiled.stats.emittedDefinitions}"
     IO.println s!"  Solve time: {solveMs}ms"
     IO.println s!"  Total time: {compileMs + solveMs}ms"
     IO.println (String.ofList (List.replicate 40 '─'))

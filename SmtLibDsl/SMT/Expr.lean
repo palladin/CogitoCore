@@ -12,22 +12,102 @@ inductive Ty where
   | bitVec (n : Nat)
   | array (idxWidth : Nat) (elem : Ty)  -- Array (BitVec idxWidth) elem (supports nested arrays)
   | datatype (decl : DatatypeDecl)
-deriving Repr
+deriving Repr, Hashable
 
 /-- Field declaration for a datatype/record. -/
 structure DatatypeField where
   name : String
   ty : Ty
-deriving Repr
+deriving Repr, Hashable
 
 /-- Datatype declaration with one constructor and named fields. -/
 structure DatatypeDecl where
   name : String
   constructor : String
   fields : List DatatypeField
-deriving Repr
+deriving Repr, Hashable
 
 end
+
+mutual
+
+/-- Executable structural equality for SMT sorts. -/
+def tyDecEq : (a b : Ty) → Decidable (a = b)
+  | .bool, .bool => isTrue rfl
+  | .bitVec a, .bitVec b =>
+      match decEq a b with
+      | isTrue h => isTrue (by cases h; rfl)
+      | isFalse h => isFalse (by intro h'; cases h'; exact h rfl)
+  | .array ai ae, .array bi be =>
+      match decEq ai bi with
+      | isFalse h => isFalse (by intro h'; cases h'; exact h rfl)
+      | isTrue hi =>
+          match tyDecEq ae be with
+          | isTrue he => isTrue (by cases hi; cases he; rfl)
+          | isFalse he => isFalse (by intro h'; cases h'; exact he rfl)
+  | .datatype a, .datatype b =>
+      match datatypeDeclDecEq a b with
+      | isTrue h => isTrue (by cases h; rfl)
+      | isFalse h => isFalse (by intro h'; cases h'; exact h rfl)
+  | .bool, .bitVec _ | .bool, .array _ _ | .bool, .datatype _
+  | .bitVec _, .bool | .bitVec _, .array _ _ | .bitVec _, .datatype _
+  | .array _ _, .bool | .array _ _, .bitVec _ | .array _ _, .datatype _
+  | .datatype _, .bool | .datatype _, .bitVec _ | .datatype _, .array _ _ =>
+      isFalse (by intro h; contradiction)
+termination_by a b => sizeOf a + sizeOf b
+
+/-- Executable structural equality for datatype fields. -/
+def datatypeFieldDecEq (a b : DatatypeField) : Decidable (a = b) :=
+  match decEq a.name b.name with
+  | isFalse h => isFalse (by intro h'; cases h'; exact h rfl)
+  | isTrue hn =>
+      match tyDecEq a.ty b.ty with
+      | isTrue ht => isTrue (by cases a; cases b; simp_all)
+      | isFalse ht => isFalse (by intro h'; cases h'; exact ht rfl)
+termination_by sizeOf a + sizeOf b
+decreasing_by
+  cases a
+  cases b
+  simp_wf
+  omega
+
+/-- Executable structural equality for lists of datatype fields. -/
+def datatypeFieldListDecEq :
+    (a b : List DatatypeField) → Decidable (a = b)
+  | [], [] => isTrue rfl
+  | a :: as, b :: bs =>
+      match datatypeFieldDecEq a b with
+      | isFalse h => isFalse (by intro h'; cases h'; exact h rfl)
+      | isTrue hh =>
+          match datatypeFieldListDecEq as bs with
+          | isTrue ht => isTrue (by cases hh; cases ht; rfl)
+          | isFalse ht => isFalse (by intro h'; cases h'; exact ht rfl)
+  | [], _ :: _ | _ :: _, [] => isFalse (by intro h; contradiction)
+termination_by a b => sizeOf a + sizeOf b
+
+/-- Executable structural equality for datatype declarations. -/
+def datatypeDeclDecEq (a b : DatatypeDecl) : Decidable (a = b) :=
+  match decEq a.name b.name with
+  | isFalse h => isFalse (by intro h'; cases h'; exact h rfl)
+  | isTrue hn =>
+      match decEq a.constructor b.constructor with
+      | isFalse h => isFalse (by intro h'; cases h'; exact h rfl)
+      | isTrue hc =>
+          match datatypeFieldListDecEq a.fields b.fields with
+          | isTrue hf => isTrue (by cases a; cases b; simp_all)
+          | isFalse hf => isFalse (by intro h'; cases h'; exact hf rfl)
+termination_by sizeOf a + sizeOf b
+decreasing_by
+  cases a
+  cases b
+  simp_wf
+  omega
+
+end
+
+instance : DecidableEq Ty := tyDecEq
+instance : DecidableEq DatatypeField := datatypeFieldDecEq
+instance : DecidableEq DatatypeDecl := datatypeDeclDecEq
 
 /-- The SMT-LIB language accepted by an expression or program.
 
