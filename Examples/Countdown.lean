@@ -26,10 +26,10 @@ namespace Countdown
 def W : Nat := 16
 
 /-- Type alias for our bitvector expressions -/
-abbrev BV := Expr (Ty.bitVec W)
+abbrev BV := Expr .abv (Ty.bitVec W)
 
 /-- Type alias for array expressions (stack) -/
-abbrev Stack := Expr (Ty.array W (Ty.bitVec W))
+abbrev Stack := Expr .abv (Ty.array W (Ty.bitVec W))
 
 /-! ## SMT Helpers -/
 
@@ -54,7 +54,7 @@ def three : BV := int 3
     sp: current stack pointer, st: current stack, ops: remaining operations
     Returns (final_sp, final_st, constraint) -/
 def evalRec (ops : List (BV × BV)) (target : BV) (sp : BV) (st : Stack) (idx : Nat) :
-    Smt (Expr Ty.bool) := do
+    Smt .abv (Expr .abv Ty.bool) := do
   match ops with
   | [] =>
     -- Terminal: stack has one element equal to target
@@ -127,7 +127,7 @@ termination_by ops.length
 
 /-- Constraint that pushed operands are all distinct -/
 def distinctOperandsRec (ops : List (BV × BV)) (collected : List BV) (idx : Nat) :
-    Smt (Expr Ty.bool) := do
+    Smt .abv (Expr .abv Ty.bool) := do
   match ops with
   | [] =>
     -- Use SMT-LIB distinct constraint for all collected operands
@@ -144,7 +144,7 @@ def distinctOperandsRec (ops : List (BV × BV)) (collected : List BV) (idx : Nat
     distinctOperandsRec rest (pushed :: collected) (idx + 1)
 
 /-- Valid range constraints for operations and operands -/
-def validRanges (nums : List Int) (ops : List (BV × BV)) : Expr Ty.bool :=
+def validRanges (nums : List Int) (ops : List (BV × BV)) : Expr .abv Ty.bool :=
   ops.foldl (fun acc (op, opr) =>
     let opValid := (op =. zero) ∨. (op =. one)
     let pushValid := Expr.ite (op =. zero)
@@ -180,7 +180,7 @@ def rpnEval (ops : List (Int × Int)) (st : List Int) : Option (List Int) :=
 /-! ## Solver -/
 
 /-- Build SMT constraints for the Countdown problem -/
-def countdown (nums : List Int) (target : Int) (numInstrs : Nat) : Smt Unit := do
+def countdown (nums : List Int) (target : Int) (numInstrs : Nat) : Smt .abv Unit := do
   -- Declare operation variables
   let mut ops : List (BV × BV) := []
   for i in List.range numInstrs do
@@ -294,7 +294,7 @@ def main (args : List String) : IO UInt32 := do
 
     let problem := countdown nums target n
     IO.println "Problem is set up."
-    let result ← solve problem { dumpSmt := dumpSmt, profile := profile }
+    let result ← solve .z3 problem { dumpSmt := dumpSmt, profile := profile }
     match result with
     | .sat model =>
       IO.println s!"SAT - Solution found with {n} instructions!"

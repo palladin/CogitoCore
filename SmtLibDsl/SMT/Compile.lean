@@ -7,11 +7,11 @@ import SmtLibDsl.SMT.Cmd
 namespace SmtLibDsl.SMT
 
 /-- Compile an expression to SMT-LIB2 syntax -/
-def compileExpr : Expr ty → String
-  | .var name _ => name
+def compileExpr : Expr lang ty → String
+  | @ExprF.var _ name _ _ => name
   | .btrue => "true"
   | .bfalse => "false"
-  | .bvLit val n => s!"(_ bv{val} {n})"
+  | @ExprF.bvLit _ val n _ => s!"(_ bv{val} {n})"
   -- Boolean operations
   | .and l r => s!"(and {compileExpr l} {compileExpr r})"
   | .or l r => s!"(or {compileExpr l} {compileExpr r})"
@@ -67,13 +67,13 @@ def compileExpr : Expr ty → String
   | .bvUMulO l r => s!"(bvumulo {compileExpr l} {compileExpr r})"
   | .bvSMulO l r => s!"(bvsmulo {compileExpr l} {compileExpr r})"
   -- Array operations
-  | .mkArray idxWidth elem v => s!"((as const (Array (_ BitVec {idxWidth}) {elem})) {compileExpr v})"
+  | @ExprF.mkArray _ idxWidth elem v _ => s!"((as const (Array (_ BitVec {idxWidth}) {elem})) {compileExpr v})"
   | .select arr i => s!"(select {compileExpr arr} {compileExpr i})"
   | .store arr i v => s!"(store {compileExpr arr} {compileExpr i} {compileExpr v})"
   | .arrEq l r => s!"(= {compileExpr l} {compileExpr r})"
   | .dtEq l r => s!"(= {compileExpr l} {compileExpr r})"
   -- Distinct constraint
-  | .distinctBV _ names => s!"(distinct {names |> String.intercalate " "})"
+  | @ExprF.distinctBV _ _ names _ => s!"(distinct {names |> String.intercalate " "})"
   -- Datatype field selector
   | .dtSelect field _ rec => s!"({field} {compileExpr rec})"
 
@@ -84,16 +84,20 @@ def Ty.usesDatatype : Ty → Bool
   | .bool | .bitVec _ => false
 
 /-- Check whether an SMT program uses datatype declarations/sorts. -/
-partial def Smt.usesDatatype : Smt α → Bool
+partial def Smt.usesDatatype : Smt lang α → Bool
   | .pure _ => false
-  | .bind (.declareDatatypeConstOf _ _) _ => true
-  | .bind (.declareConst name ty) f => ty.usesDatatype || usesDatatype (f (.var name ty))
+  | .bind (@Cmd.declareDatatypeConstOf _ _ _ _) _ => true
+  | .bind (@Cmd.declareConst _ name ty supported) f =>
+      ty.usesDatatype || usesDatatype (f (@ExprF.var lang name ty supported))
   | .bind (.assert _) f => usesDatatype (f ())
 
 /-- Compile a command, returning the result value and SMT-LIB2 string -/
-def compileCmd : Cmd α → (α × String)
-  | .declareConst name s => (.var name s, s!"(declare-const {name} {s})")
-  | .declareDatatypeConstOf name decl => (.var name (Ty.datatype decl), s!"(declare-const {name} {Ty.datatype decl})")
+def compileCmd : Cmd lang α → (α × String)
+  | @Cmd.declareConst _ name s supported =>
+      (@ExprF.var lang name s supported, s!"(declare-const {name} {s})")
+  | @Cmd.declareDatatypeConstOf _ name decl supported =>
+      letI : Language.HasDatatype lang := supported
+      (.var name (Ty.datatype decl), s!"(declare-const {name} {Ty.datatype decl})")
   | .assert e => ((), s!"(assert {compileExpr e})")
 
 /-- Insert datatype declaration once per datatype name, preserving first-seen order. -/
@@ -120,29 +124,32 @@ private partial def collectDatatypeDeclsFromDecl (decl : DatatypeDecl) (decls : 
 end
 
 /-- Collect datatype declarations required by an SMT program. -/
-partial def Smt.collectDatatypeDecls : Smt α → List DatatypeDecl
+partial def Smt.collectDatatypeDecls : Smt lang α → List DatatypeDecl
   | .pure _ => []
-  | .bind (.declareDatatypeConstOf name decl) f =>
+  | .bind (@Cmd.declareDatatypeConstOf _ name decl supported) f =>
+    letI : Language.HasDatatype lang := supported
     collectDatatypeDeclsFromDecl decl (collectDatatypeDecls (f (.var name (Ty.datatype decl))))
-  | .bind (.declareConst name ty) f => collectDatatypeDecls (f (.var name ty))
+  | .bind (@Cmd.declareConst _ name ty supported) f =>
+      collectDatatypeDecls (f (@ExprF.var lang name ty supported))
   | .bind (.assert _) f => collectDatatypeDecls (f ())
 
-/-- Compile an Smt program to SMT-LIB2 string (with QF_ABV logic for arrays + bitvectors) -/
-partial def compile (smt : Smt Unit) : String :=
-  let logic := if smt.usesDatatype then "ALL" else "QF_ABV"
+/-- Compile only the declaration/assertion body of an SMT program. -/
+partial def compileCommands : Smt lang Unit → String
+  | .pure () => ""
+  | .bind cmd f =>
+    let (a, s) := compileCmd cmd
+    let rest := compileCommands (f a)
+    if rest.isEmpty then s else s ++ "\n" ++ rest
+
+/-- Compile a language-indexed SMT program to SMT-LIB2. -/
+partial def compile (smt : Smt lang Unit) : String :=
+  let logic := lang.smtLogic
   let datatypeDecls := String.intercalate "\n" ((smt.collectDatatypeDecls).map DatatypeDecl.toSmtLib)
-  let body := compileBody smt
+  let body := compileCommands smt
   let commandBody :=
     if datatypeDecls.isEmpty then body
     else if body.isEmpty then datatypeDecls
     else datatypeDecls ++ "\n" ++ body
   s!"(set-logic {logic})\n{commandBody}\n(check-sat)\n(get-model)"
-where
-  compileBody : Smt Unit → String
-    | .pure () => ""
-    | .bind cmd f =>
-      let (a, s) := compileCmd cmd
-      let rest := compileBody (f a)
-      if rest.isEmpty then s else s ++ "\n" ++ rest
 
 end SmtLibDsl.SMT

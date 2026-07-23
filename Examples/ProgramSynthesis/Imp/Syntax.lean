@@ -6,7 +6,7 @@ open SmtLibDsl.SMT
 
 def W : Nat := 8
 
-abbrev BV := Expr (Ty.bitVec W)
+abbrev BV := Expr .bv (Ty.bitVec W)
 abbrev Value := Nat
 abbrev Env (alpha : Type) := List (String × alpha)
 

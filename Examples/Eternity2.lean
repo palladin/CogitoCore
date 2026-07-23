@@ -38,10 +38,10 @@ deriving Repr, BEq
 
 /-- SMT variables representing the 4 colors of a piece at a grid position -/
 structure PieceColors where
-  upVar : Expr (Ty.bitVec ColorBitSize)
-  rightVar : Expr (Ty.bitVec ColorBitSize)
-  downVar : Expr (Ty.bitVec ColorBitSize)
-  leftVar : Expr (Ty.bitVec ColorBitSize)
+  upVar : Expr .bv (Ty.bitVec ColorBitSize)
+  rightVar : Expr .bv (Ty.bitVec ColorBitSize)
+  downVar : Expr .bv (Ty.bitVec ColorBitSize)
+  leftVar : Expr .bv (Ty.bitVec ColorBitSize)
 
 /-! ## Puzzle Definition -/
 
@@ -114,21 +114,21 @@ abbrev Grid2D (α : Type) := List (List α)
 /-! ## SMT Constraints (Generalized) -/
 
 /-- Border color as SMT bitvector -/
-def borderBV : Expr (Ty.bitVec ColorBitSize) := bv borderColor ColorBitSize
+def borderBV : Expr .bv (Ty.bitVec ColorBitSize) := bv borderColor ColorBitSize
 
 /-- Check if a piece's colors match the expected colors -/
-def equalColors (p : Piece) (pc : PieceColors) : Expr Ty.bool :=
+def equalColors (p : Piece) (pc : PieceColors) : Expr .bv Ty.bool :=
   (bv (colorInt p.up) ColorBitSize =. pc.upVar) ∧.
   (bv (colorInt p.right) ColorBitSize =. pc.rightVar) ∧.
   (bv (colorInt p.down) ColorBitSize =. pc.downVar) ∧.
   (bv (colorInt p.left) ColorBitSize =. pc.leftVar)
 
 /-- Valid piece index constraint: 0 ≤ index < numPieces -/
-def validPieceConstraint (numPieces : Nat) (pieceVar : Expr (Ty.bitVec BitSize)) : Expr Ty.bool :=
+def validPieceConstraint (numPieces : Nat) (pieceVar : Expr .bv (Ty.bitVec BitSize)) : Expr .bv Ty.bool :=
   (bv 0 BitSize ≤.ᵤ pieceVar) ∧. (pieceVar <.ᵤ bv numPieces BitSize)
 
 /-- Generate constraint for a single cell based on its position -/
-def cellConstraint (rows cols : Nat) (pcs : Grid2D PieceColors) (r c : Nat) : Expr Ty.bool :=
+def cellConstraint (rows cols : Nat) (pcs : Grid2D PieceColors) (r c : Nat) : Expr .bv Ty.bool :=
   let getPc := fun (i j : Nat) =>
     match pcs[i]? with
     | some row => row[j]?
@@ -177,13 +177,13 @@ def cellConstraint (rows cols : Nat) (pcs : Grid2D PieceColors) (r c : Nat) : Ex
     topMatch ∧. bottomMatch ∧. leftMatch ∧. rightMatch
 
 /-- Apply color constraints to all cells -/
-def colorConstraints (rows cols : Nat) (pcs : Grid2D PieceColors) : Smt Unit := do
+def colorConstraints (rows cols : Nat) (pcs : Grid2D PieceColors) : Smt .bv Unit := do
   for r in List.range rows do
     for c in List.range cols do
       assert (cellConstraint rows cols pcs r c)
 
 /-- Constraint: piece index implies matching colors (with any rotation) -/
-def pieceConstraint (pieces : List Piece) (pieceVar : Expr (Ty.bitVec BitSize)) (pc : PieceColors) : Expr Ty.bool :=
+def pieceConstraint (pieces : List Piece) (pieceVar : Expr .bv (Ty.bitVec BitSize)) (pc : PieceColors) : Expr .bv Ty.bool :=
   let indexed := pieces.zip (List.range pieces.length)
   indexed.foldl (fun acc (p, idx) =>
     let rots := rotations p
@@ -192,14 +192,14 @@ def pieceConstraint (pieces : List Piece) (pieceVar : Expr (Ty.bitVec BitSize)) 
   ) Expr.btrue
 
 /-- Apply piece constraints to entire grid -/
-def pieceConstraints (pieces : List Piece) (varPieces : Grid2D (Expr (Ty.bitVec BitSize)))
-    (colorPieces : Grid2D PieceColors) : Smt Unit := do
+def pieceConstraints (pieces : List Piece) (varPieces : Grid2D (Expr .bv (Ty.bitVec BitSize)))
+    (colorPieces : Grid2D PieceColors) : Smt .bv Unit := do
   for (pieceRow, colorRow) in varPieces.zip colorPieces do
     for (vp, pc) in pieceRow.zip colorRow do
       assert (pieceConstraint pieces vp pc)
 
 /-- Apply valid piece constraints to entire grid -/
-def validPieces (numPieces : Nat) (vars : Grid2D (Expr (Ty.bitVec BitSize))) : Smt Unit := do
+def validPieces (numPieces : Nat) (vars : Grid2D (Expr .bv (Ty.bitVec BitSize))) : Smt .bv Unit := do
   for row in vars do
     for v in row do
       assert (validPieceConstraint numPieces v)
@@ -209,18 +209,18 @@ def flatten2D (grid : Grid2D α) : List α :=
   grid.flatten
 
 /-- Distinctness constraint: all pieces must be different -/
-def distinctPieces (vars : Grid2D (Expr (Ty.bitVec BitSize))) : Smt Unit := do
+def distinctPieces (vars : Grid2D (Expr .bv (Ty.bitVec BitSize))) : Smt .bv Unit := do
   let flat := flatten2D vars
   assert (distinct flat)
 
 /-! ## Main Solver -/
 
 /-- Declare piece variables for a cell -/
-def declarePieceVar (i j : Nat) : Smt (Expr (Ty.bitVec BitSize)) := do
+def declarePieceVar (i j : Nat) : Smt .bv (Expr .bv (Ty.bitVec BitSize)) := do
   declareBV s!"x_{i}_{j}" BitSize
 
 /-- Declare color variables for a cell -/
-def declareColorCell (i j : Nat) : Smt PieceColors := do
+def declareColorCell (i j : Nat) : Smt .bv PieceColors := do
   let up ← declareBV s!"cx_{i}_{j}_Up" ColorBitSize
   let right ← declareBV s!"cx_{i}_{j}_Right" ColorBitSize
   let down ← declareBV s!"cx_{i}_{j}_Down" ColorBitSize
@@ -228,7 +228,7 @@ def declareColorCell (i j : Nat) : Smt PieceColors := do
   pure { upVar := up, rightVar := right, downVar := down, leftVar := left }
 
 /-- Declare all piece index variables -/
-def declarePieceVars (rows cols : Nat) : Smt (Grid2D (Expr (Ty.bitVec BitSize))) := do
+def declarePieceVars (rows cols : Nat) : Smt .bv (Grid2D (Expr .bv (Ty.bitVec BitSize))) := do
   let mut grid := []
   for i in List.range rows do
     let mut row := []
@@ -239,7 +239,7 @@ def declarePieceVars (rows cols : Nat) : Smt (Grid2D (Expr (Ty.bitVec BitSize)))
   pure grid
 
 /-- Declare all color variables -/
-def declareColorPieces (rows cols : Nat) : Smt (Grid2D PieceColors) := do
+def declareColorPieces (rows cols : Nat) : Smt .bv (Grid2D PieceColors) := do
   let mut grid := []
   for i in List.range rows do
     let mut row := []
@@ -250,7 +250,7 @@ def declareColorPieces (rows cols : Nat) : Smt (Grid2D PieceColors) := do
   pure grid
 
 /-- Build the complete SMT problem for a puzzle -/
-def buildSolver (puzzle : Puzzle) : Smt Unit := do
+def buildSolver (puzzle : Puzzle) : Smt .bv Unit := do
   let pieces := puzzle.pieces.map listToPiece
   let numPieces := pieces.length
 
@@ -298,7 +298,7 @@ def colorChar (c : Char) : String :=
 
 /-- Left-pad a string to at least n characters -/
 def leftPad (n : Nat) (c : Char) (s : String) : String :=
-  let pad := String.mk (List.replicate (n - s.length) c)
+  let pad := String.ofList (List.replicate (n - s.length) c)
   pad ++ s
 
 /-- Parse a hex or binary string to Nat -/
@@ -329,9 +329,9 @@ def displayPieceSolution (puzzle : Puzzle) (model : Model schema) : IO Unit := d
 
   -- Build separator lines dynamically
   let cellWidth := if puzzle.pieces.length > 99 then 5 else 4
-  let topLine := "┌" ++ String.intercalate "┬" (List.replicate puzzle.cols (String.mk (List.replicate cellWidth '─'))) ++ "┐"
-  let midLine := "├" ++ String.intercalate "┼" (List.replicate puzzle.cols (String.mk (List.replicate cellWidth '─'))) ++ "┤"
-  let botLine := "└" ++ String.intercalate "┴" (List.replicate puzzle.cols (String.mk (List.replicate cellWidth '─'))) ++ "┘"
+  let topLine := "┌" ++ String.intercalate "┬" (List.replicate puzzle.cols (String.ofList (List.replicate cellWidth '─'))) ++ "┐"
+  let midLine := "├" ++ String.intercalate "┼" (List.replicate puzzle.cols (String.ofList (List.replicate cellWidth '─'))) ++ "┤"
+  let botLine := "└" ++ String.intercalate "┴" (List.replicate puzzle.cols (String.ofList (List.replicate cellWidth '─'))) ++ "┘"
 
   IO.println topLine
   for i in List.range puzzle.rows do
@@ -342,9 +342,9 @@ def displayPieceSolution (puzzle : Puzzle) (model : Model schema) : IO Unit := d
       | .ok v =>
         let displayVal := match parseBitVec v with
           | some n => s!"{n}"
-          | none => v.take 3
+          | none => (v.take 3).toString
         row := row ++ s!" {leftPad (cellWidth - 2) ' ' displayVal} │"
-      | .error _ => row := row ++ s!"{String.mk (List.replicate (cellWidth - 1) ' ')}?│"
+      | .error _ => row := row ++ s!"{String.ofList (List.replicate (cellWidth - 1) ' ')}?│"
     IO.println row
     if i < puzzle.rows - 1 then
       IO.println midLine
@@ -463,7 +463,7 @@ def solvePuzzle (puzzle : Puzzle) (dumpSmt : Bool := false) (profile : Bool := f
   IO.println "(This may take a while for larger puzzles...)"
   IO.println ""
 
-  let result ← solve solver { dumpSmt := dumpSmt, profile := profile }
+  let result ← solve .z3 solver { dumpSmt := dumpSmt, profile := profile }
   match result with
   | .sat model =>
     IO.println s!"{bold}SAT - Solution found!{resetColor}"

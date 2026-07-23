@@ -47,13 +47,13 @@ def innerXField : DatatypeFieldRef InnerDecl :=
   InnerDecl.fieldByName "x" (by simp [InnerDecl, DatatypeDecl.fieldNames])
 
 /-- 1) Basic bitvector example. -/
-def basicBV : Smt Unit := do
+def basicBV : Smt .bv Unit := do
   let x ← declareBV "x" 8
   assert (x +. bv 1 8 =. bv 10 8)
 
 /-- Solve `basicBV` and extract `x` as a typed Lean value. -/
 def inspectBasicBV : IO Unit := do
-  let result ← solve basicBV
+  let result ← solve .z3 basicBV
   match result with
   | .sat model =>
     IO.println "basicBV: SAT"
@@ -74,7 +74,7 @@ def inspectBasicBV : IO Unit := do
 #eval inspectBasicBV
 
 /-- 2) Arrays (read/write) example. -/
-def arrays : Smt Unit := do
+def arrays : Smt .abv Unit := do
   let a ← declareArray "a" 8 (Ty.bitVec 8)
   let i ← declareBV "i" 8
   let a' := storeArr a i (bv 7 8)
@@ -82,7 +82,7 @@ def arrays : Smt Unit := do
 
 /-- Solve `arrays` and extract the array model value as SExpr. -/
 def inspectArrays : IO Unit := do
-  let result ← solve arrays
+  let result ← solve .z3 arrays
   match result with
   | .sat model =>
     IO.println "arrays: SAT"
@@ -105,7 +105,7 @@ def inspectArrays : IO Unit := do
 #eval inspectArrays
 
 /-- 3) Nested arrays (array of arrays). -/
-def nestedArrays : Smt Unit := do
+def nestedArrays : Smt .abv Unit := do
   let grid ← declareArray "grid" 8 (Ty.array 4 (Ty.bitVec 8))
   let i ← declareBV "i" 8
   let j ← declareBV "j" 4
@@ -114,28 +114,28 @@ def nestedArrays : Smt Unit := do
   assert (cell =. bv 3 8)
 
 #eval compile nestedArrays
-#eval solve nestedArrays
+#eval solve .z3 nestedArrays
 
 /-- 4) Datatype selected with a field handle. -/
-def datatypeSimple : Smt Unit := do
+def datatypeSimple : Smt .all Unit := do
   let p ← declareDatatypeConstOf "p" PointDecl
   assert (selectField pointXField p =. bv 3 8)
 
 #eval compile datatypeSimple
-#eval solve datatypeSimple
+#eval solve .z3 datatypeSimple
 
 /-- 5) Datatype containing another datatype, selected by field handles. -/
-def datatypeNested : Smt Unit := do
+def datatypeNested : Smt .all Unit := do
   let o ← declareDatatypeConstOf "o" OuterDecl
   let inner := selectField outerInnerField o
   assert (selectField innerXField inner =. bv 5 8)
 
 #eval compile datatypeNested
-#eval solve datatypeNested
+#eval solve .z3 datatypeNested
 
 /-- 6) Show typed model extraction for bitvectors and SExpr values. -/
 def inspectModel : IO Unit := do
-  let result ← solve datatypeSimple
+  let result ← solve .z3 datatypeSimple
   match result with
   | .sat model =>
     IO.println "SAT model:"
@@ -160,7 +160,7 @@ def inspectModel : IO Unit := do
 
 /-- 7) Solve nested datatype example and extract nested `x` via field refs. -/
 def inspectNestedModel : IO Unit := do
-  let result ← solve datatypeNested
+  let result ← solve .z3 datatypeNested
   match result with
   | .sat model =>
     IO.println "nested datatype: SAT"

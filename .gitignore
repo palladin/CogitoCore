@@ -3,5 +3,6 @@
 /.lake/
 /build/
 /tmp/
+/.tools/
 *.olean
 *.ilean

@@ -25,10 +25,10 @@ namespace Sokoban
 abbrev W : Nat := 8
 
 /-- Type alias for coordinate expressions -/
-abbrev Coord := Expr (Ty.bitVec W)
+abbrev Coord := Expr .bv (Ty.bitVec W)
 
 /-- Direction encoding: 0=Up, 1=Down, 2=Left, 3=Right -/
-abbrev Dir := Expr (Ty.bitVec W)
+abbrev Dir := Expr .bv (Ty.bitVec W)
 
 /-! ## Puzzle Definition -/
 
@@ -117,7 +117,7 @@ def Level.parse (lines : List String) : Level := Id.run do
     match lines[row]? with
     | some line =>
       for col in List.range line.length do
-        match line.get? ⟨col⟩ with
+        match String.Pos.Raw.get? line ⟨col⟩ with
         | some c =>
           match Cell.fromChar c with
           | .wall => walls := (row, col) :: walls
@@ -149,12 +149,12 @@ def dirLeft : Dir := coord 2
 def dirRight : Dir := coord 3
 
 /-- Check if position is a wall -/
-def isWall (level : Level) (r c : Coord) : Expr Ty.bool :=
+def isWall (level : Level) (r c : Coord) : Expr .bv Ty.bool :=
   level.walls.foldl (fun acc (wr, wc) =>
     acc ∨. ((r =. coord wr) ∧. (c =. coord wc))) Expr.bfalse
 
 /-- Check if position is a dead corner (box here = deadlock) -/
-def isDeadCorner (level : Level) (r c : Coord) : Expr Ty.bool :=
+def isDeadCorner (level : Level) (r c : Coord) : Expr .bv Ty.bool :=
   level.deadCorners.foldl (fun acc (cr, cc) =>
     acc ∨. ((r =. coord cr) ∧. (c =. coord cc))) Expr.bfalse
 
@@ -176,7 +176,7 @@ structure State where
   boxCols : List Coord
 
 /-- Declare state variables for a timestep -/
-def declState (tag : String) (numBoxes : Nat) : Smt State := do
+def declState (tag : String) (numBoxes : Nat) : Smt .bv State := do
   let playerRow ← declareBV s!"{tag}_pr" W
   let playerCol ← declareBV s!"{tag}_pc" W
   let mut boxRows : List Coord := []
@@ -189,7 +189,7 @@ def declState (tag : String) (numBoxes : Nat) : Smt State := do
   pure { playerRow, playerCol, boxRows, boxCols }
 
 /-- Assert initial state matches level -/
-def assertInitialState (state : State) (level : Level) : Smt Unit := do
+def assertInitialState (state : State) (level : Level) : Smt .bv Unit := do
   let (pr, pc) := level.initialPlayer
   assert (state.playerRow =. coord pr)
   assert (state.playerCol =. coord pc)
@@ -201,12 +201,12 @@ def assertInitialState (state : State) (level : Level) : Smt Unit := do
     | _, _, _ => pure ()
 
 /-- Check if position matches any box -/
-def isBox (state : State) (r c : Coord) : Expr Ty.bool :=
+def isBox (state : State) (r c : Coord) : Expr .bv Ty.bool :=
   (state.boxRows.zip state.boxCols).foldl (fun acc (br, bc) =>
     acc ∨. ((r =. br) ∧. (c =. bc))) Expr.bfalse
 
 /-- Assert goal state: all boxes on goals -/
-def assertGoalState (state : State) (level : Level) : Smt Unit := do
+def assertGoalState (state : State) (level : Level) : Smt .bv Unit := do
   -- Each box must be on some goal
   for (boxR, boxC) in state.boxRows.zip state.boxCols do
     let onGoal := level.goals.foldl (fun acc (gr, gc) =>
@@ -214,7 +214,7 @@ def assertGoalState (state : State) (level : Level) : Smt Unit := do
     assert onGoal
 
 /-- Assert no box is in a dead corner (early deadlock detection) -/
-def assertNoDeadlock (state : State) (level : Level) : Smt Unit := do
+def assertNoDeadlock (state : State) (level : Level) : Smt .bv Unit := do
   -- If no dead corners, skip
   if level.deadCorners.isEmpty then return
   -- Each box must NOT be in a dead corner
@@ -225,7 +225,7 @@ def assertNoDeadlock (state : State) (level : Level) : Smt Unit := do
 /-! ## Transition Constraints -/
 
 /-- Assert valid transition from state to nextState via direction -/
-def assertTransition (level : Level) (state nextState : State) (dir : Dir) : Smt Unit := do
+def assertTransition (level : Level) (state nextState : State) (dir : Dir) : Smt .bv Unit := do
   -- Compute player's target position
   let (targetR, targetC) := movePos state.playerRow state.playerCol dir
 
@@ -267,7 +267,7 @@ def assertTransition (level : Level) (state nextState : State) (dir : Dir) : Smt
 /-! ## Main Solver -/
 
 /-- Build SMT problem for solving Sokoban in at most n steps -/
-def sokoban (level : Level) (maxSteps : Nat) : Smt (List Dir) := do
+def sokoban (level : Level) (maxSteps : Nat) : Smt .bv (List Dir) := do
   let numBoxes := level.initialBoxes.length
 
   -- Declare states for each timestep
@@ -306,11 +306,146 @@ def sokoban (level : Level) (maxSteps : Nat) : Smt (List Dir) := do
   pure dirs
 
 /-- Wrapper for solving -/
-def sokobanQuery (level : Level) (maxSteps : Nat) : Smt Unit := do
+def sokobanQuery (level : Level) (maxSteps : Nat) : Smt .bv Unit := do
   let _ ← sokoban level maxSteps
   pure ()
 
+/-! ## Backend benchmark -/
+
+/-- One wall-clock measurement for a language-compatible solver. -/
+structure BenchmarkRun (vars : VarSchema) where
+  solverName : String
+  result : Result vars
+  elapsedMs : Float
+
+/-- Run the exact same elaborated query through every selected backend. -/
+def benchmarkBackends (solvers : List (Solver .bv))
+    (problem : Smt .bv Unit) (config : SolveConfig) :
+    IO (List (BenchmarkRun problem.schema)) := do
+  solvers.mapM fun solver => do
+    let start ← IO.monoNanosNow
+    let result ← solve solver problem config
+    let stop ← IO.monoNanosNow
+    pure {
+      solverName := solver.name
+      result
+      elapsedMs := (stop - start).toFloat / 1_000_000.0
+    }
+
+def resultStatus : Result vars → String
+  | .sat _ => "SAT"
+  | .unsat => "UNSAT"
+  | .unknown reason => s!"UNKNOWN ({reason})"
+
+private def knownResult : Result vars → Option Bool
+  | .sat _ => some true
+  | .unsat => some false
+  | .unknown _ => none
+
+/-- Unknown/timeouts are inconclusive; only SAT versus UNSAT is a conflict. -/
+def benchmarkResultsAgree : List (BenchmarkRun vars) → Bool
+  | runs =>
+    match runs.filterMap fun run => knownResult run.result with
+    | [] => true
+    | first :: rest => rest.all (· == first)
+
+def firstSatModel : List (BenchmarkRun vars) → Option (Model vars)
+  | [] => none
+  | { result := .sat model, .. } :: _ => some model
+  | _ :: rest => firstSatModel rest
+
+def hasUnsatResult (runs : List (BenchmarkRun vars)) : Bool :=
+  runs.any fun run =>
+    match run.result with
+    | .unsat => true
+    | _ => false
+
+def parseNatOption (optionPrefix : String) : List String → Option Nat
+  | [] => none
+  | arg :: rest =>
+    if arg.startsWith optionPrefix then
+      (arg.drop optionPrefix.length).toNat?
+    else
+      parseNatOption optionPrefix rest
+
+def parseTimeout (args : List String) : Option Nat :=
+  parseNatOption "--timeout=" args
+
+def parseFixedBound (args : List String) : Option Nat :=
+  parseNatOption "--bound=" args
+
+def addBenchmarkTimes (totals : List Float)
+    (runs : List (BenchmarkRun vars)) : List Float :=
+  match totals, runs with
+  | total :: totals, run :: runs =>
+    (total + run.elapsedMs) :: addBenchmarkTimes totals runs
+  | totals, _ => totals
+
+def checkBenchmarkBackends : List (Solver .bv) → IO (List Bool)
+  | [] => pure []
+  | solver :: rest => do
+    match ← checkSolver solver with
+    | .ok version =>
+      IO.println s!"  ✓ {solver.name}: {version}"
+      pure (true :: (← checkBenchmarkBackends rest))
+    | .error reason =>
+      IO.println s!"  - {solver.name}: unavailable ({reason})"
+      pure (false :: (← checkBenchmarkBackends rest))
+
+def selectAvailableBackends : List (Solver .bv) → List Bool → List (Solver .bv)
+  | solver :: solvers, true :: available =>
+    solver :: selectAvailableBackends solvers available
+  | _ :: solvers, false :: available =>
+    selectAvailableBackends solvers available
+  | _, _ => []
+
+private def printBenchmarkRows : List (Solver .bv) → List Float → IO Unit
+  | solver :: solvers, elapsedMs :: totals => do
+    IO.println s!"  {solver.name}: {elapsedMs} ms"
+    printBenchmarkRows solvers totals
+  | _, _ => pure ()
+
+def printBenchmarkTotals (solvers : List (Solver .bv))
+    (totals : List Float) : IO Unit := do
+  IO.println ""
+  IO.println "Cumulative backend benchmark:"
+  IO.println "─────────────────────────────"
+  printBenchmarkRows solvers totals
+
 /-! ## Display -/
+
+/-- ANSI styling used by the terminal board renderer. -/
+private def ansiReset : String := "\x1b[0m"
+private def wallStyle : String := "\x1b[1;94m"       -- bright blue
+private def playerStyle : String := "\x1b[1;96m"     -- bright cyan
+private def boxStyle : String := "\x1b[1;93m"        -- bright yellow
+private def goalStyle : String := "\x1b[1;95m"       -- bright magenta
+private def boxOnGoalStyle : String := "\x1b[1;92m"  -- bright green
+private def playerOnGoalStyle : String := "\x1b[1;97;45m" -- white on magenta
+
+/-- Render one board entity, retaining the original one-character grid width. -/
+def renderCell (useColor : Bool) (cell : Char) : String :=
+  let text := String.ofList [cell]
+  if !useColor then
+    text
+  else
+    let style :=
+      match cell with
+      | '#' => wallStyle
+      | '@' => playerStyle
+      | '$' => boxStyle
+      | '·' => goalStyle
+      | '✓' => boxOnGoalStyle
+      | '&' => playerOnGoalStyle
+      | _ => ""
+    if style.isEmpty then text else style ++ text ++ ansiReset
+
+/-- Print the symbols and colors used by the board renderer. -/
+def displayLegend (useColor : Bool) : IO Unit := do
+  IO.println s!"Legend: {renderCell useColor '#'} wall  \
+{renderCell useColor '@'} player  {renderCell useColor '$'} box  \
+{renderCell useColor '·'} goal  {renderCell useColor '✓'} box on goal  \
+{renderCell useColor '&'} player on goal"
 
 /-- Direction to string -/
 def dirToString : Nat → String
@@ -353,8 +488,9 @@ def extractMoves (model : Model schema) (maxSteps : Nat) : List Nat :=
 def posInList (pos : Nat × Nat) (lst : List (Nat × Nat)) : Bool :=
   lst.any (· == pos)
 
-/-- Display level with given player and box positions -/
-def displayLevel (level : Level) (playerPos : Nat × Nat) (boxes : List (Nat × Nat)) : IO Unit := do
+/-- Display a level with colored player, box, goal, and wall entities. -/
+def displayLevel (level : Level) (playerPos : Nat × Nat)
+    (boxes : List (Nat × Nat)) (useColor : Bool := true) : IO Unit := do
   for r in List.range level.height do
     let mut rowStr := ""
     for c in List.range level.width do
@@ -367,7 +503,7 @@ def displayLevel (level : Level) (playerPos : Nat × Nat) (boxes : List (Nat × 
         else if posInList pos level.walls then '#'
         else if posInList pos level.goals then '·'
         else ' '
-      rowStr := rowStr ++ String.mk [ch]
+      rowStr := rowStr ++ renderCell useColor ch
     IO.println rowStr
 
 end Sokoban
@@ -379,6 +515,12 @@ def main (args : List String) : IO UInt32 := do
   let dumpSmt := args.contains "--dump-smt" || args.contains "-d"
   let profile := args.contains "--profile" || args.contains "-p"
   let listLevels := args.contains "--list" || args.contains "-l"
+  let noColorEnvironment ← IO.getEnv "NO_COLOR"
+  let useColor :=
+    !args.contains "--no-color" &&
+      (args.contains "--color" || noColorEnvironment.isNone)
+  let timeout := parseTimeout args
+  let fixedBound := parseFixedBound args
 
   -- Parse level number and optional max steps from args
   let nums := args.filterMap String.toNat?
@@ -400,17 +542,25 @@ def main (args : List String) : IO UInt32 := do
       | none => pure ()
     IO.println ""
     IO.println "Usage: lake exe sokoban <level_number>"
+    IO.println "       lake exe sokoban <level_number> <max_steps> [--timeout=<ms>]"
+    IO.println "       lake exe sokoban <level_number> --bound=<steps> [--timeout=<ms>]"
+    IO.println "       add --no-color (or set NO_COLOR) for plain-text boards"
+    IO.println "       add --color to force colors when NO_COLOR is inherited"
     IO.println "       lake exe sokoban --list"
     return 0
 
-  -- Check Z3 availability
-  match ← SmtLibDsl.SMT.checkZ3 with
-  | .error msg =>
-    IO.eprintln msg
+  -- The shared `.bv` index makes this a type-safe heterogeneous benchmark:
+  -- direct SMT solvers and composed CNF/SAT pipelines use the same API.
+  let candidates : List (Solver .bv) :=
+    [.z3, .cvc5, .kissat, .cadical]
+  IO.println "Benchmark backends:"
+  let availability ← checkBenchmarkBackends candidates
+  let benchmarkSolvers := selectAvailableBackends candidates availability
+  IO.println ""
+
+  if benchmarkSolvers.isEmpty then
+    IO.eprintln "No benchmark backend is available."
     return 1
-  | .ok version =>
-    IO.println s!"Using {version}"
-    IO.println ""
 
   -- Get selected level
   let some levelData := Levels.getLevel levelNum
@@ -421,25 +571,51 @@ def main (args : List String) : IO UInt32 := do
   let level := Level.parse levelData.lines
 
   IO.println s!"{levelData.name}:"
-  displayLevel level level.initialPlayer level.initialBoxes
+  displayLegend useColor
+  displayLevel level level.initialPlayer level.initialBoxes useColor
   IO.println ""
   IO.println s!"Boxes: {level.initialBoxes.length}"
   IO.println s!"Goals: {level.goals.length}"
   IO.println s!"Dead corners: {level.deadCorners.length} (pruning enabled)"
-  IO.println s!"Max steps: {maxTries}"
+  match fixedBound with
+  | some steps => IO.println s!"Fixed benchmark bound: {steps} step(s)"
+  | none => IO.println s!"Max steps: {maxTries}"
+  match timeout with
+  | some milliseconds =>
+    IO.println s!"Direct SMT timeout: {milliseconds}ms per query"
+  | none => pure ()
   IO.println ""
 
-  -- Try with increasing number of steps
-  for numSteps in List.range maxTries do
-    let n := numSteps + 1
-    IO.print s!"Trying {n} step(s)... "
+  let mut totalTimes := List.replicate benchmarkSolvers.length 0.0
+  let stepBounds :=
+    match fixedBound with
+    | some steps => [steps]
+    | none => (List.range maxTries).map (· + 1)
+
+  -- Benchmark the same query on all available backends, either at one fixed
+  -- bound or at every bound in the normal iterative search.
+  for n in stepBounds do
+    IO.println s!"Trying {n} step(s):"
 
     let problem := sokobanQuery level n
-    let result ← SmtLibDsl.SMT.solve problem { dumpSmt := dumpSmt, profile := profile }
+    let runs ← benchmarkBackends benchmarkSolvers problem {
+      dumpSmt := dumpSmt
+      timeout
+      profile := profile
+    }
+    totalTimes := addBenchmarkTimes totalTimes runs
 
-    match result with
-    | .sat model =>
-      IO.println "SAT!"
+    for run in runs do
+      IO.println s!"  {run.solverName}: {resultStatus run.result} ({run.elapsedMs} ms)"
+
+    if !benchmarkResultsAgree runs then
+      IO.eprintln s!"Contradictory SAT/UNSAT results at {n} step(s); refusing to replay a disputed model."
+      printBenchmarkTotals benchmarkSolvers totalTimes
+      return 2
+
+    match firstSatModel runs with
+    | some model =>
+      printBenchmarkTotals benchmarkSolvers totalTimes
       IO.println ""
       IO.println s!"✓ Solution found in {n} moves!"
       IO.println ""
@@ -458,7 +634,7 @@ def main (args : List String) : IO UInt32 := do
       let mut boxes := level.initialBoxes
 
       IO.println "Initial:"
-      displayLevel level playerPos boxes
+      displayLevel level playerPos boxes useColor
       IO.println ""
 
       for step in List.range moves.length do
@@ -482,18 +658,23 @@ def main (args : List String) : IO UInt32 := do
           playerPos := targetPos
 
           IO.println s!"Move {step + 1}: {dirToString dir}"
-          displayLevel level playerPos boxes
+          displayLevel level playerPos boxes useColor
           IO.println ""
         | none => pure ()
 
       IO.println "✓ Puzzle solved!"
       return 0
 
-    | .unsat =>
-      IO.println "No solution"
-    | .unknown reason =>
-      IO.println s!"Unknown: {reason}"
+    | none =>
+      if hasUnsatResult runs then
+        IO.println ""
+      else
+        IO.println "  No backend returned a conclusive result."
+        IO.println ""
 
+  printBenchmarkTotals benchmarkSolvers totalTimes
   IO.println ""
-  IO.println s!"No solution found within {maxTries} moves."
+  match fixedBound with
+  | some steps => IO.println s!"No solution found at the {steps}-step bound."
+  | none => IO.println s!"No solution found within {maxTries} moves."
   return 1

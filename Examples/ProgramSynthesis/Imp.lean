@@ -47,7 +47,7 @@ def run (args : List String) : IO UInt32 := do
         IO.println s!"Parsed AST: {program}"
         IO.println ""
         IO.println "Compiling IMP program to SSA-based SMT..."
-        let result <- SmtLibDsl.SMT.solve (compiledProgram program) {
+        let result <- SmtLibDsl.SMT.solve .z3 (compiledProgram program) {
           dumpSmt := dumpSmt
           profile := profile
         }

@@ -26,7 +26,7 @@ abbrev W : Nat := 8
 def magicConstant : Nat := N * (N * N + 1) / 2
 
 /-- Type alias for our bitvector expressions -/
-abbrev BV := Expr (Ty.bitVec W)
+abbrev BV := Expr .bv (Ty.bitVec W)
 
 /-- Grid type -/
 abbrev Grid := Tensor2D N N BV
@@ -43,7 +43,7 @@ def sumVec (xs : Vector BV n) : BV :=
 /-! ## Constraints -/
 
 /-- All cells contain values from 1 to n² -/
-def rangeConstraints (grid : Grid) : Smt Unit :=
+def rangeConstraints (grid : Grid) : Smt .bv Unit :=
   Tensor2D.foldRows (fun acc row =>
     acc >>= fun _ =>
       row.foldl (fun acc' cell =>
@@ -51,35 +51,35 @@ def rangeConstraints (grid : Grid) : Smt Unit :=
         (pure ())) (pure ()) grid
 
 /-- All cells are distinct - use SMT distinct constraint -/
-def distinctConstraints (grid : Grid) : Smt Unit := do
+def distinctConstraints (grid : Grid) : Smt .bv Unit := do
   -- Build list of all cells, then convert to distinct
   let allCells : List BV := Tensor2D.flatten grid
   assert (distinct allCells)
 
 /-- All rows sum to magic constant -/
-def rowSumConstraints (grid : Grid) : Smt Unit :=
+def rowSumConstraints (grid : Grid) : Smt .bv Unit :=
   Tensor2D.foldRows (fun acc row =>
     acc >>= fun _ => assert (sumVec row =. int magicConstant)) (pure ()) grid
 
 /-- All columns sum to magic constant -/
-def colSumConstraints (grid : Grid) : Smt Unit :=
+def colSumConstraints (grid : Grid) : Smt .bv Unit :=
   Vector.finRange N |>.foldl (fun acc c =>
     acc >>= fun _ => assert (sumVec (Tensor2D.getCol grid c) =. int magicConstant)) (pure ())
 
 /-- Main diagonal (top-left to bottom-right) sums to magic constant -/
-def mainDiagConstraint (grid : Grid) : Smt Unit := do
+def mainDiagConstraint (grid : Grid) : Smt .bv Unit := do
   let diag := Vector.ofFn fun (i : Fin N) => (Vector.get grid i).get i
   assert (sumVec diag =. int magicConstant)
 
 /-- Anti-diagonal (top-right to bottom-left) sums to magic constant -/
-def antiDiagConstraint (grid : Grid) : Smt Unit := do
+def antiDiagConstraint (grid : Grid) : Smt .bv Unit := do
   let diag := Vector.ofFn fun (i : Fin N) =>
     let col : Fin N := ⟨N - 1 - i.val, by omega⟩
     (Vector.get grid i).get col
   assert (sumVec diag =. int magicConstant)
 
 /-- Symmetry breaking - fix corner ordering to reduce search space -/
-def symmetryBreaking (grid : Grid) : Smt Unit := do
+def symmetryBreaking (grid : Grid) : Smt .bv Unit := do
   -- The smallest corner value should be in top-left
   -- This eliminates rotations and reflections
   let topLeft     := grid[0, 0]
@@ -93,7 +93,7 @@ def symmetryBreaking (grid : Grid) : Smt Unit := do
 /-! ## Main Solver -/
 
 /-- Build the complete magic square SMT problem -/
-def magicSquareSmt : Smt Grid := do
+def magicSquareSmt : Smt .bv Grid := do
   -- Declare n×n grid of variables
   let grid ← declareBVTensor "cell" [N, N] W
 
@@ -109,7 +109,7 @@ def magicSquareSmt : Smt Grid := do
   pure grid
 
 /-- Wrapper that returns Unit for solving -/
-def magicSquareQuery : Smt Unit := do
+def magicSquareQuery : Smt .bv Unit := do
   let _ ← magicSquareSmt
   pure ()
 
@@ -120,11 +120,11 @@ def padCenter (s : String) (width : Nat) : String :=
   let totalPad := width - s.length
   let leftPad := totalPad / 2
   let rightPad := totalPad - leftPad
-  String.mk (List.replicate leftPad ' ') ++ s ++ String.mk (List.replicate rightPad ' ')
+  String.ofList (List.replicate leftPad ' ') ++ s ++ String.ofList (List.replicate rightPad ' ')
 
 /-- Build horizontal separator line -/
 def horizontalLine (left : String) (mid : String) (right : String) (cellWidth : Nat) : String :=
-  let segment := String.mk (List.replicate cellWidth '─')
+  let segment := String.ofList (List.replicate cellWidth '─')
   left ++ String.intercalate mid (List.replicate N segment) ++ right
 
 /-- Parse model and display the magic square with nice box drawing -/
@@ -242,7 +242,7 @@ def main : IO UInt32 := do
   IO.println s!"Magic constant = {MagicSquare.magicConstant}"
   IO.println ""
 
-  let result ← SmtLibDsl.SMT.solve MagicSquare.magicSquareQuery
+  let result ← SmtLibDsl.SMT.solve .z3 MagicSquare.magicSquareQuery
   MagicSquare.displayResult result
 
   return 0

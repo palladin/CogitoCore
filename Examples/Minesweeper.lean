@@ -35,7 +35,7 @@ abbrev CellValue := Int
 abbrev Puzzle := Tensor2D gridRows gridCols CellValue
 
 /-- SMT variable grid -/
-abbrev SMTGrid := Tensor2D gridRows gridCols (Expr (Ty.bitVec BitSize))
+abbrev SMTGrid := Tensor2D gridRows gridCols (Expr .bv (Ty.bitVec BitSize))
 
 /-! ## Sample Puzzle (from Idris version) -/
 
@@ -116,14 +116,14 @@ def lookup (r : Fin m) (c : Fin n) (dirs : List Dir) (e : α) (grid : Tensor2D m
 /-! ## SMT Helpers -/
 
 /-- Integer constant as bitvector -/
-def int (n : Nat) : Expr (Ty.bitVec BitSize) := bv n BitSize
+def int (n : Nat) : Expr .bv (Ty.bitVec BitSize) := bv n BitSize
 
 /-- Sum a list of bitvector expressions -/
-def add (exprs : List (Expr (Ty.bitVec BitSize))) : Expr (Ty.bitVec BitSize) :=
+def add (exprs : List (Expr .bv (Ty.bitVec BitSize))) : Expr .bv (Ty.bitVec BitSize) :=
   exprs.foldl (· +. ·) (int 0)
 
 /-- Lookup cell in SMT grid with 0 default for out-of-bounds -/
-def lookupCell (r : Fin gridRows) (c : Fin gridCols) (dirs : List Dir) (grid : SMTGrid) : Expr (Ty.bitVec BitSize) :=
+def lookupCell (r : Fin gridRows) (c : Fin gridCols) (dirs : List Dir) (grid : SMTGrid) : Expr .bv (Ty.bitVec BitSize) :=
   lookup r c dirs (int 0) grid
 
 /-! ## Neighbor Counting Constraints -/
@@ -137,7 +137,7 @@ def lookupCell (r : Fin gridRows) (c : Fin gridCols) (dirs : List Dir) (grid : S
   - Edge cells have 5 neighbors
   - Interior cells have 8 neighbors
 -/
-def neighborSumConstraint (r : Fin gridRows) (c : Fin gridCols) (v : Nat) (vars : SMTGrid) : Expr Ty.bool :=
+def neighborSumConstraint (r : Fin gridRows) (c : Fin gridCols) (v : Nat) (vars : SMTGrid) : Expr .bv Ty.bool :=
   let lookup' := fun dirs => lookupCell r c dirs vars
   let sumExpr := match (toPos gridRows r, toPos gridCols c) with
     -- Corners: 3 neighbors
@@ -174,7 +174,7 @@ def neighborSumConstraint (r : Fin gridRows) (c : Fin gridCols) (v : Nat) (vars 
   - If hidden (-1): cell is either 0 (safe) or 1 (mine)
   - If revealed (0-8): cell must be 0 (not a mine) AND neighbor sum equals the revealed value
 -/
-def cellConstraint (r : Fin gridRows) (c : Fin gridCols) (puzzleVal : CellValue) (vars : SMTGrid) : Expr Ty.bool :=
+def cellConstraint (r : Fin gridRows) (c : Fin gridCols) (puzzleVal : CellValue) (vars : SMTGrid) : Expr .bv Ty.bool :=
   let cell := vars.get r c
   if puzzleVal < 0 then
     -- Hidden cell: must be 0 or 1
@@ -187,14 +187,14 @@ def cellConstraint (r : Fin gridRows) (c : Fin gridCols) (puzzleVal : CellValue)
 /-! ## SMT Problem Construction -/
 
 /-- Build all constraints for the puzzle -/
-def buildConstraints (puz : Puzzle) (vars : SMTGrid) : Smt Unit := do
+def buildConstraints (puz : Puzzle) (vars : SMTGrid) : Smt .bv Unit := do
   for r in List.finRange gridRows do
     for c in List.finRange gridCols do
       let puzzleVal := puz.get r c
       assert (cellConstraint r c puzzleVal vars)
 
 /-- Query if a specific cell must be safe (returns true if cell=0 is the only possibility) -/
-def queryMustBeSafe (puz : Puzzle) (targetRow : Fin gridRows) (targetCol : Fin gridCols) : Smt Unit := do
+def queryMustBeSafe (puz : Puzzle) (targetRow : Fin gridRows) (targetCol : Fin gridCols) : Smt .bv Unit := do
   let vars ← declareBVTensor "x" [gridRows, gridCols] BitSize
   buildConstraints puz vars
   -- Assert the target cell is a mine (1) and check for UNSAT
@@ -202,7 +202,7 @@ def queryMustBeSafe (puz : Puzzle) (targetRow : Fin gridRows) (targetCol : Fin g
   assert (Tensor2D.get vars targetRow targetCol =. int 1)
 
 /-- Query if a specific cell must be a mine (returns true if cell=1 is the only possibility) -/
-def queryMustBeMine (puz : Puzzle) (targetRow : Fin gridRows) (targetCol : Fin gridCols) : Smt Unit := do
+def queryMustBeMine (puz : Puzzle) (targetRow : Fin gridRows) (targetCol : Fin gridCols) : Smt .bv Unit := do
   let vars ← declareBVTensor "x" [gridRows, gridCols] BitSize
   buildConstraints puz vars
   -- Assert the target cell is safe (0) and check for UNSAT
@@ -335,7 +335,7 @@ def markMines (status : Tensor2D gridRows gridCols CellStatus)
 
 /-- Check if cell must be safe by testing if "cell = mine" is UNSAT -/
 def checkMustBeSafe (puz : Puzzle) (r : Fin gridRows) (c : Fin gridCols) : IO Bool := do
-  let result ← solve (queryMustBeSafe puz r c)
+  let result ← solve .z3 (queryMustBeSafe puz r c)
   match result with
   | .unsat => pure true   -- Cannot be a mine, so must be safe
   | .sat _ => pure false  -- Could be a mine
@@ -343,7 +343,7 @@ def checkMustBeSafe (puz : Puzzle) (r : Fin gridRows) (c : Fin gridCols) : IO Bo
 
 /-- Check if cell must be a mine by testing if "cell = safe" is UNSAT -/
 def checkMustBeMine (puz : Puzzle) (r : Fin gridRows) (c : Fin gridCols) : IO Bool := do
-  let result ← solve (queryMustBeMine puz r c)
+  let result ← solve .z3 (queryMustBeMine puz r c)
   match result with
   | .unsat => pure true   -- Cannot be safe, so must be a mine
   | .sat _ => pure false  -- Could be safe

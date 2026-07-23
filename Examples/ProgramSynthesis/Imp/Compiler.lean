@@ -16,7 +16,7 @@ def compileAExpr (env : Env BV) : AExpr -> BV
   | .sub lhs rhs => compileAExpr env lhs -. compileAExpr env rhs
   | .mul lhs rhs => compileAExpr env lhs *. compileAExpr env rhs
 
-def compileBExpr (env : Env BV) : BExpr -> Expr Ty.bool
+def compileBExpr (env : Env BV) : BExpr -> Expr .bv Ty.bool
   | .tt => Expr.btrue
   | .ff => Expr.bfalse
   | .eq lhs rhs => compileAExpr env lhs =. compileAExpr env rhs
@@ -37,19 +37,19 @@ def lookupName (env : Env String) (name : String) : String :=
 
 private partial def mergeEnvSsa
     (vars : List String)
-    (cond : Expr Ty.bool)
+    (cond : Expr .bv Ty.bool)
     (thenEnv elseEnv : Env BV)
-    (nextIdx : Nat) : Smt (Env BV × Nat) :=
+    (nextIdx : Nat) : Smt .bv (Env BV × Nat) :=
   go vars [] nextIdx
 where
-  go : List String -> Env BV -> Nat -> Smt (Env BV × Nat)
+  go : List String -> Env BV -> Nat -> Smt .bv (Env BV × Nat)
     | [], acc, idx => pure (acc.reverse, idx)
     | name :: rest, acc, idx => do
       let merged ← declareBV (freshSsaName name idx) W
       assert (merged =. Expr.ite cond (lookupSym thenEnv name) (lookupSym elseEnv name))
       go rest ((name, merged) :: acc) (idx + 1)
 
-partial def compileStmtSsa (vars : List String) (env : Env BV) (nextIdx : Nat) : Stmt -> Smt (Env BV × Nat)
+partial def compileStmtSsa (vars : List String) (env : Env BV) (nextIdx : Nat) : Stmt -> Smt .bv (Env BV × Nat)
   | .skip => pure (env, nextIdx)
   | .assign name expr => do
     let rhs := compileAExpr env expr
@@ -92,7 +92,7 @@ partial def finalSsaEnv (vars : List String) (env : Env String) (nextIdx : Nat) 
     let (elseEnv, nextElse) := finalSsaEnv vars env nextThen elseBranch
     mergeFinalNames vars thenEnv elseEnv nextElse
 
-def compiledProgram (program : Stmt) : Smt Unit := do
+def compiledProgram (program : Stmt) : Smt .bv Unit := do
   let vars := varsStmt program
   let mut env : Env BV := []
   for name in vars do

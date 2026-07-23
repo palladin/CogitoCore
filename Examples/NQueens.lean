@@ -29,17 +29,17 @@ def BitSize : Nat := 8
 /-! ## SMT Constraints -/
 
 /-- Valid range constraint: 0 ≤ x < N -/
-def validRange (x : Expr (Ty.bitVec BitSize)) : Expr Ty.bool :=
+def validRange (x : Expr .bv (Ty.bitVec BitSize)) : Expr .bv Ty.bool :=
   (bv 0 BitSize ≤.ᵤ x) ∧. (x <.ᵤ bv N BitSize)
 
 /-- Absolute difference using bitvector operations -/
-def absDiff (x y : Expr (Ty.bitVec BitSize)) : Expr (Ty.bitVec BitSize) :=
+def absDiff (x y : Expr .bv (Ty.bitVec BitSize)) : Expr .bv (Ty.bitVec BitSize) :=
   -- Use conditional: if x >= y then x - y else y - x
   Expr.ite (x ≥.ᵤ y) (x -. y) (y -. x)
 
 /-- Diagonal constraint: queens at rows i and j don't attack diagonally
     |col[i] - col[j]| ≠ |i - j| -/
-def notOnDiagonal (colI colJ : Expr (Ty.bitVec BitSize)) (i j : Nat) : Expr Ty.bool :=
+def notOnDiagonal (colI colJ : Expr .bv (Ty.bitVec BitSize)) (i j : Nat) : Expr .bv Ty.bool :=
   let rowDiff := if i > j then bv (i - j) BitSize else bv (j - i) BitSize
   let colDiff := absDiff colI colJ
   ¬. (colDiff =. rowDiff)
@@ -53,9 +53,9 @@ def allPairs (n : Nat) : List (Nat × Nat) :=
   ) (List.range n)
 
 /-- Build the N-Queens SMT problem -/
-def nqueens (n : Nat) : Smt Unit := do
+def nqueens (n : Nat) : Smt .bv Unit := do
   -- Declare column variables: cols[i] = column of queen in row i
-  let mut cols : List (Expr (Ty.bitVec BitSize)) := []
+  let mut cols : List (Expr .bv (Ty.bitVec BitSize)) := []
   for i in List.range n do
     let col ← declareBV s!"col_{i}" BitSize
     cols := cols ++ [col]
@@ -119,7 +119,7 @@ def displayBoard (n : Nat) (queenCols : List Nat) : IO Unit := do
   let mut topBorder := "   ┌"
   for _ in List.range n do
     topBorder := topBorder ++ "───"
-  topBorder := topBorder.dropRight 1 ++ "┐"
+  topBorder := (topBorder.dropEnd 1).toString ++ "┐"
   IO.println topBorder
 
   -- Print each row
@@ -143,7 +143,7 @@ def displayBoard (n : Nat) (queenCols : List Nat) : IO Unit := do
   let mut botBorder := "   └"
   for _ in List.range n do
     botBorder := botBorder ++ "───"
-  botBorder := botBorder.dropRight 1 ++ "┘"
+  botBorder := (botBorder.dropEnd 1).toString ++ "┘"
   IO.println botBorder
 
   -- Print column headers again
@@ -177,7 +177,7 @@ def main (args : List String) : IO UInt32 := do
   let problem := nqueens N
 
   IO.println "Solving with Z3..."
-  let result ← solve problem { dumpSmt := dumpSmt, profile := profile }
+  let result ← solve .z3 problem { dumpSmt := dumpSmt, profile := profile }
 
   match result with
   | .sat model =>

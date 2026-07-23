@@ -65,9 +65,9 @@ def vName (r c : Nat) : String := s!"v_{r}_{c}"
 def flatten2D (xss : List (List α)) : List α :=
   xss.foldr (· ++ ·) []
 
-abbrev BV1 := Expr (Ty.bitVec 1)
-abbrev BV4 := Expr (Ty.bitVec 4)
-abbrev BV8 := Expr (Ty.bitVec 8)
+abbrev BV1 := Expr .bv (Ty.bitVec 1)
+abbrev BV4 := Expr .bv (Ty.bitVec 4)
+abbrev BV8 := Expr .bv (Ty.bitVec 8)
 
 structure EdgeVar where
   name : String
@@ -84,7 +84,7 @@ def sumEdges4 (es : List BV1) : BV4 :=
 def sumEdges8 (es : List BV1) : BV8 :=
   es.foldl (fun acc e => acc +. edgeToBV8 e) (bv 0 8)
 
-def declareHEdges (rows cols : Nat) : Smt (List (List EdgeVar)) := do
+def declareHEdges (rows cols : Nat) : Smt .bv (List (List EdgeVar)) := do
   let mut grid : List (List EdgeVar) := []
   for r in List.range (rows + 1) do
     let mut row : List EdgeVar := []
@@ -95,7 +95,7 @@ def declareHEdges (rows cols : Nat) : Smt (List (List EdgeVar)) := do
     grid := grid ++ [row]
   pure grid
 
-def declareVEdges (rows cols : Nat) : Smt (List (List EdgeVar)) := do
+def declareVEdges (rows cols : Nat) : Smt .bv (List (List EdgeVar)) := do
   let mut grid : List (List EdgeVar) := []
   for r in List.range rows do
     let mut row : List EdgeVar := []
@@ -129,14 +129,14 @@ def cellEdges? (h : List (List EdgeVar)) (v : List (List EdgeVar)) (r c : Nat) :
 /-- A subtour-elimination cut: these edge names cannot all be simultaneously active. -/
 abbrev Cut := List String
 
-def cutConstraint (allEdges : List EdgeVar) (cut : Cut) : Expr Ty.bool :=
+def cutConstraint (allEdges : List EdgeVar) (cut : Cut) : Expr .bv Ty.bool :=
   let edges := cut.filterMap (fun nm => (allEdges.find? (fun e => e.name == nm)).map (·.expr))
   if edges.isEmpty then Expr.btrue
   else
     let s := sumEdges8 edges
     s ≤.ᵤ bv (edges.length - 1) 8
 
-def buildSlitherlink (spec : PuzzleSpec) (cuts : List Cut := []) : Smt (List EdgeVar) := do
+def buildSlitherlink (spec : PuzzleSpec) (cuts : List Cut := []) : Smt .bv (List EdgeVar) := do
   let rows := spec.rows
   let cols := spec.cols
 
@@ -168,7 +168,7 @@ def buildSlitherlink (spec : PuzzleSpec) (cuts : List Cut := []) : Smt (List Edg
 
   pure allEdges
 
-def slitherlink (spec : PuzzleSpec) (cuts : List Cut := []) : Smt Unit := do
+def slitherlink (spec : PuzzleSpec) (cuts : List Cut := []) : Smt .bv Unit := do
   let _ ← buildSlitherlink spec cuts
   pure ()
 
@@ -283,7 +283,7 @@ partial def solveSingleLoop
     return none
 
   let query := slitherlink spec cuts
-  let result ← solve query config
+  let result ← solve .z3 query config
   match result with
   | .unsat =>
     IO.println "UNSAT: no solution satisfies current constraints."

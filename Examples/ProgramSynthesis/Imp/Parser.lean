@@ -70,13 +70,13 @@ private partial def tokenizeChars : List Char -> Except String (List Token)
       | _ => unreachable!
     else if isIdentStart c then
       let (restWord, tail) := spanChars isIdentPart cs
-      let word := String.mk (c :: restWord)
+      let word := String.ofList (c :: restWord)
       do
         let tokens <- tokenizeChars tail
         pure (keywordOrIdent word :: tokens)
     else if c.isDigit then
       let (restDigits, tail) := spanChars Char.isDigit cs
-      let digits := String.mk (c :: restDigits)
+      let digits := String.ofList (c :: restDigits)
       match digits.toNat? with
       | some value => do
           let tokens <- tokenizeChars tail

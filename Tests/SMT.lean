@@ -8,76 +8,80 @@ import Examples.ProgramSynthesis.Imp.Syntax
 import Examples.ProgramSynthesis.Imp.Parser
 import Examples.ProgramSynthesis.Imp.Compiler
 
+open SmtLibDsl
 open SmtLibDsl.SMT
 open LSpec
 open ProgramSynthesis.Imp
+
+private def compileTestExpr (e : Expr .all ty) : String :=
+  compileExpr e
 
 -- Test compileExpr for various expression types
 def compileExprTests : TestSeq :=
   group "compileExpr" $
     -- Literals
-    test "btrue" (compileExpr Expr.btrue = "true") $
-    test "bfalse" (compileExpr Expr.bfalse = "false") $
-    test "bvLit" (compileExpr (bv 42 8) = "(_ bv42 8)") $
-    test "bvLit 16-bit" (compileExpr (bv 255 16) = "(_ bv255 16)") $
+    test "btrue" (compileTestExpr Expr.btrue = "true") $
+    test "bfalse" (compileTestExpr Expr.bfalse = "false") $
+    test "bvLit" (compileTestExpr (bv 42 8) = "(_ bv42 8)") $
+    test "bvLit 16-bit" (compileTestExpr (bv 255 16) = "(_ bv255 16)") $
     -- Variables
-    test "var bool" (compileExpr (Expr.var "x" Ty.bool) = "x") $
-    test "var bv8" (compileExpr (Expr.var "y" (Ty.bitVec 8)) = "y") $
+    test "var bool" (compileTestExpr (Expr.var "x" Ty.bool) = "x") $
+    test "var bv8" (compileTestExpr (Expr.var "y" (Ty.bitVec 8)) = "y") $
     -- Boolean operations
-    test "and" (compileExpr (Expr.and Expr.btrue Expr.bfalse) = "(and true false)") $
-    test "or" (compileExpr (Expr.or Expr.btrue Expr.bfalse) = "(or true false)") $
-    test "not" (compileExpr (Expr.not Expr.btrue) = "(not true)") $
-    test "bool equality" (compileExpr (Expr.btrue =. Expr.bfalse) = "(= true false)") $
-    test "imp" (compileExpr (Expr.imp Expr.btrue Expr.bfalse) = "(=> true false)") $
+    test "and" (compileTestExpr (Expr.and Expr.btrue Expr.bfalse) = "(and true false)") $
+    test "or" (compileTestExpr (Expr.or Expr.btrue Expr.bfalse) = "(or true false)") $
+    test "not" (compileTestExpr (Expr.not Expr.btrue) = "(not true)") $
+    test "bool equality" (compileTestExpr (Expr.btrue =. Expr.bfalse) = "(= true false)") $
+    test "imp" (compileTestExpr (Expr.imp Expr.btrue Expr.bfalse) = "(=> true false)") $
     -- BitVector arithmetic
-    test "bvAdd" (compileExpr (Expr.bvAdd (bv 1 8) (bv 2 8)) = "(bvadd (_ bv1 8) (_ bv2 8))") $
-    test "bvSub" (compileExpr (Expr.bvSub (bv 5 8) (bv 3 8)) = "(bvsub (_ bv5 8) (_ bv3 8))") $
-    test "bvMul" (compileExpr (Expr.bvMul (bv 2 8) (bv 3 8)) = "(bvmul (_ bv2 8) (_ bv3 8))") $
-    test "bvNeg" (compileExpr (Expr.bvNeg (bv 5 8)) = "(bvneg (_ bv5 8))") $
-    test "bvUDiv" (compileExpr (Expr.bvUDiv (bv 10 8) (bv 2 8)) = "(bvudiv (_ bv10 8) (_ bv2 8))") $
-    test "bvSDiv" (compileExpr (Expr.bvSDiv (bv 10 8) (bv 2 8)) = "(bvsdiv (_ bv10 8) (_ bv2 8))") $
-    test "bvURem" (compileExpr (Expr.bvURem (bv 10 8) (bv 3 8)) = "(bvurem (_ bv10 8) (_ bv3 8))") $
-    test "bvSMod" (compileExpr (Expr.bvSMod (bv 10 8) (bv 3 8)) = "(bvsmod (_ bv10 8) (_ bv3 8))") $
-    test "bvSRem" (compileExpr (Expr.bvSRem (bv 10 8) (bv 3 8)) = "(bvsrem (_ bv10 8) (_ bv3 8))") $
+    test "bvAdd" (compileTestExpr (Expr.bvAdd (bv 1 8) (bv 2 8)) = "(bvadd (_ bv1 8) (_ bv2 8))") $
+    test "bvSub" (compileTestExpr (Expr.bvSub (bv 5 8) (bv 3 8)) = "(bvsub (_ bv5 8) (_ bv3 8))") $
+    test "bvMul" (compileTestExpr (Expr.bvMul (bv 2 8) (bv 3 8)) = "(bvmul (_ bv2 8) (_ bv3 8))") $
+    test "bvNeg" (compileTestExpr (Expr.bvNeg (bv 5 8)) = "(bvneg (_ bv5 8))") $
+    test "bvUDiv" (compileTestExpr (Expr.bvUDiv (bv 10 8) (bv 2 8)) = "(bvudiv (_ bv10 8) (_ bv2 8))") $
+    test "bvSDiv" (compileTestExpr (Expr.bvSDiv (bv 10 8) (bv 2 8)) = "(bvsdiv (_ bv10 8) (_ bv2 8))") $
+    test "bvURem" (compileTestExpr (Expr.bvURem (bv 10 8) (bv 3 8)) = "(bvurem (_ bv10 8) (_ bv3 8))") $
+    test "bvSMod" (compileTestExpr (Expr.bvSMod (bv 10 8) (bv 3 8)) = "(bvsmod (_ bv10 8) (_ bv3 8))") $
+    test "bvSRem" (compileTestExpr (Expr.bvSRem (bv 10 8) (bv 3 8)) = "(bvsrem (_ bv10 8) (_ bv3 8))") $
     -- Bitwise operations
-    test "bvAnd" (compileExpr (Expr.bvAnd (bv 0xFF 8) (bv 0x0F 8)) = "(bvand (_ bv255 8) (_ bv15 8))") $
-    test "bvOr" (compileExpr (Expr.bvOr (bv 0xF0 8) (bv 0x0F 8)) = "(bvor (_ bv240 8) (_ bv15 8))") $
-    test "bvXor" (compileExpr (Expr.bvXor (bv 0xFF 8) (bv 0x0F 8)) = "(bvxor (_ bv255 8) (_ bv15 8))") $
-    test "bvNot" (compileExpr (Expr.bvNot (bv 0 8)) = "(bvnot (_ bv0 8))") $
-    test "bvNand" (compileExpr (Expr.bvNand (bv 1 8) (bv 2 8)) = "(bvnand (_ bv1 8) (_ bv2 8))") $
-    test "bvNor" (compileExpr (Expr.bvNor (bv 1 8) (bv 2 8)) = "(bvnor (_ bv1 8) (_ bv2 8))") $
-    test "bvXnor" (compileExpr (Expr.bvXnor (bv 1 8) (bv 2 8)) = "(bvxnor (_ bv1 8) (_ bv2 8))") $
+    test "bvAnd" (compileTestExpr (Expr.bvAnd (bv 0xFF 8) (bv 0x0F 8)) = "(bvand (_ bv255 8) (_ bv15 8))") $
+    test "bvOr" (compileTestExpr (Expr.bvOr (bv 0xF0 8) (bv 0x0F 8)) = "(bvor (_ bv240 8) (_ bv15 8))") $
+    test "bvXor" (compileTestExpr (Expr.bvXor (bv 0xFF 8) (bv 0x0F 8)) = "(bvxor (_ bv255 8) (_ bv15 8))") $
+    test "bvNot" (compileTestExpr (Expr.bvNot (bv 0 8)) = "(bvnot (_ bv0 8))") $
+    test "bvNand" (compileTestExpr (Expr.bvNand (bv 1 8) (bv 2 8)) = "(bvnand (_ bv1 8) (_ bv2 8))") $
+    test "bvNor" (compileTestExpr (Expr.bvNor (bv 1 8) (bv 2 8)) = "(bvnor (_ bv1 8) (_ bv2 8))") $
+    test "bvXnor" (compileTestExpr (Expr.bvXnor (bv 1 8) (bv 2 8)) = "(bvxnor (_ bv1 8) (_ bv2 8))") $
     -- Shifts
-    test "bvShl" (compileExpr (Expr.bvShl (bv 1 8) (bv 2 8)) = "(bvshl (_ bv1 8) (_ bv2 8))") $
-    test "bvLShr" (compileExpr (Expr.bvLShr (bv 8 8) (bv 2 8)) = "(bvlshr (_ bv8 8) (_ bv2 8))") $
-    test "bvAShr" (compileExpr (Expr.bvAShr (bv 8 8) (bv 2 8)) = "(bvashr (_ bv8 8) (_ bv2 8))") $
-    test "rotateLeft" (compileExpr (Expr.rotateLeft 2 (bv 1 8)) = "((_ rotate_left 2) (_ bv1 8))") $
-    test "rotateRight" (compileExpr (Expr.rotateRight 2 (bv 1 8)) = "((_ rotate_right 2) (_ bv1 8))") $
+    test "bvShl" (compileTestExpr (Expr.bvShl (bv 1 8) (bv 2 8)) = "(bvshl (_ bv1 8) (_ bv2 8))") $
+    test "bvLShr" (compileTestExpr (Expr.bvLShr (bv 8 8) (bv 2 8)) = "(bvlshr (_ bv8 8) (_ bv2 8))") $
+    test "bvAShr" (compileTestExpr (Expr.bvAShr (bv 8 8) (bv 2 8)) = "(bvashr (_ bv8 8) (_ bv2 8))") $
+    test "rotateLeft" (compileTestExpr (Expr.rotateLeft 2 (bv 1 8)) = "((_ rotate_left 2) (_ bv1 8))") $
+    test "rotateRight" (compileTestExpr (Expr.rotateRight 2 (bv 1 8)) = "((_ rotate_right 2) (_ bv1 8))") $
     -- Comparisons
-    test "bvEq" (compileExpr (Expr.bvEq (bv 5 8) (bv 5 8)) = "(= (_ bv5 8) (_ bv5 8))") $
-    test "bvULt" (compileExpr (Expr.bvULt (bv 1 8) (bv 2 8)) = "(bvult (_ bv1 8) (_ bv2 8))") $
-    test "bvULe" (compileExpr (Expr.bvULe (bv 1 8) (bv 2 8)) = "(bvule (_ bv1 8) (_ bv2 8))") $
-    test "bvUGt" (compileExpr (Expr.bvUGt (bv 2 8) (bv 1 8)) = "(bvugt (_ bv2 8) (_ bv1 8))") $
-    test "bvUGe" (compileExpr (Expr.bvUGe (bv 2 8) (bv 1 8)) = "(bvuge (_ bv2 8) (_ bv1 8))") $
-    test "bvSLt" (compileExpr (Expr.bvSLt (bv 1 8) (bv 2 8)) = "(bvslt (_ bv1 8) (_ bv2 8))") $
-    test "bvSLe" (compileExpr (Expr.bvSLe (bv 1 8) (bv 2 8)) = "(bvsle (_ bv1 8) (_ bv2 8))") $
-    test "bvSGt" (compileExpr (Expr.bvSGt (bv 2 8) (bv 1 8)) = "(bvsgt (_ bv2 8) (_ bv1 8))") $
-    test "bvSGe" (compileExpr (Expr.bvSGe (bv 2 8) (bv 1 8)) = "(bvsge (_ bv2 8) (_ bv1 8))") $
-    test "bvComp" (compileExpr (Expr.bvComp (bv 5 8) (bv 5 8)) = "(bvcomp (_ bv5 8) (_ bv5 8))") $
+    test "bvEq" (compileTestExpr (Expr.bvEq (bv 5 8) (bv 5 8)) = "(= (_ bv5 8) (_ bv5 8))") $
+    test "bvULt" (compileTestExpr (Expr.bvULt (bv 1 8) (bv 2 8)) = "(bvult (_ bv1 8) (_ bv2 8))") $
+    test "bvULe" (compileTestExpr (Expr.bvULe (bv 1 8) (bv 2 8)) = "(bvule (_ bv1 8) (_ bv2 8))") $
+    test "bvUGt" (compileTestExpr (Expr.bvUGt (bv 2 8) (bv 1 8)) = "(bvugt (_ bv2 8) (_ bv1 8))") $
+    test "bvUGe" (compileTestExpr (Expr.bvUGe (bv 2 8) (bv 1 8)) = "(bvuge (_ bv2 8) (_ bv1 8))") $
+    test "bvSLt" (compileTestExpr (Expr.bvSLt (bv 1 8) (bv 2 8)) = "(bvslt (_ bv1 8) (_ bv2 8))") $
+    test "bvSLe" (compileTestExpr (Expr.bvSLe (bv 1 8) (bv 2 8)) = "(bvsle (_ bv1 8) (_ bv2 8))") $
+    test "bvSGt" (compileTestExpr (Expr.bvSGt (bv 2 8) (bv 1 8)) = "(bvsgt (_ bv2 8) (_ bv1 8))") $
+    test "bvSGe" (compileTestExpr (Expr.bvSGe (bv 2 8) (bv 1 8)) = "(bvsge (_ bv2 8) (_ bv1 8))") $
+    test "bvComp" (compileTestExpr (Expr.bvComp (bv 5 8) (bv 5 8)) = "(bvcomp (_ bv5 8) (_ bv5 8))") $
     -- Width-changing
-    test "concat" (compileExpr (Expr.concat (bv 1 4) (bv 2 4)) = "(concat (_ bv1 4) (_ bv2 4))") $
-    test "extract" (compileExpr (Expr.extract 7 4 (bv 255 8)) = "((_ extract 7 4) (_ bv255 8))") $
-    test "zeroExt" (compileExpr (Expr.zeroExt 8 (bv 255 8)) = "((_ zero_extend 8) (_ bv255 8))") $
-    test "signExt" (compileExpr (Expr.signExt 8 (bv 255 8)) = "((_ sign_extend 8) (_ bv255 8))") $
-    test "repeat" (compileExpr (Expr.repeat 4 (bv 1 8)) = "((_ repeat 4) (_ bv1 8))") $
+    test "concat" (compileTestExpr (Expr.concat (bv 1 4) (bv 2 4)) = "(concat (_ bv1 4) (_ bv2 4))") $
+    test "extract" (compileTestExpr (Expr.extract 7 4 (bv 255 8)) = "((_ extract 7 4) (_ bv255 8))") $
+    test "zeroExt" (compileTestExpr (Expr.zeroExt 8 (bv 255 8)) = "((_ zero_extend 8) (_ bv255 8))") $
+    test "signExt" (compileTestExpr (Expr.signExt 8 (bv 255 8)) = "((_ sign_extend 8) (_ bv255 8))") $
+    test "repeat" (compileTestExpr (Expr.repeat 4 (bv 1 8)) = "((_ repeat 4) (_ bv1 8))") $
     -- Overflow predicates
-    test "bvNegO" (compileExpr (Expr.bvNegO (bv 128 8)) = "(bvnego (_ bv128 8))") $
-    test "bvUAddO" (compileExpr (Expr.bvUAddO (bv 200 8) (bv 100 8)) = "(bvuaddo (_ bv200 8) (_ bv100 8))") $
-    test "bvSAddO" (compileExpr (Expr.bvSAddO (bv 100 8) (bv 100 8)) = "(bvsaddo (_ bv100 8) (_ bv100 8))") $
-    test "bvUMulO" (compileExpr (Expr.bvUMulO (bv 20 8) (bv 20 8)) = "(bvumulo (_ bv20 8) (_ bv20 8))") $
-    test "bvSMulO" (compileExpr (Expr.bvSMulO (bv 20 8) (bv 20 8)) = "(bvsmulo (_ bv20 8) (_ bv20 8))") $
+    test "bvNegO" (compileTestExpr (Expr.bvNegO (bv 128 8)) = "(bvnego (_ bv128 8))") $
+    test "bvUAddO" (compileTestExpr (Expr.bvUAddO (bv 200 8) (bv 100 8)) = "(bvuaddo (_ bv200 8) (_ bv100 8))") $
+    test "bvSAddO" (compileTestExpr (Expr.bvSAddO (bv 100 8) (bv 100 8)) = "(bvsaddo (_ bv100 8) (_ bv100 8))") $
+    test "bvUMulO" (compileTestExpr (Expr.bvUMulO (bv 20 8) (bv 20 8)) = "(bvumulo (_ bv20 8) (_ bv20 8))") $
+    test "bvSMulO" (compileTestExpr (Expr.bvSMulO (bv 20 8) (bv 20 8)) = "(bvsmulo (_ bv20 8) (_ bv20 8))") $
     -- Distinct constraint
-    test "distinctBV" (compileExpr (Expr.distinctBV 8 ["x", "y", "z"]) = "(distinct x y z)") $
+    test "distinctBV" (compileTestExpr (Expr.distinctBV 8 ["x", "y", "z"]) = "(distinct x y z)") $
     -- Datatype selectors
     test "datatype selector safe" (
       let point : DatatypeDecl := {
@@ -88,15 +92,15 @@ def compileExprTests : TestSeq :=
           { name := "y", ty := Ty.bitVec 8 }
         ]
       }
-      let p : Expr (Ty.datatype point) := Expr.var "p" (Ty.datatype point)
+      let p : Expr .all (Ty.datatype point) := Expr.var "p" (Ty.datatype point)
       let xField : DatatypeFieldRef point :=
         point.fieldByName "x" (by simp [point, DatatypeDecl.fieldNames])
-      compileExpr (selectField xField p) = "(x p)"
+      compileTestExpr (selectField xField p) = "(x p)"
     ) $
     test "nested const array" (
-      let inner : Expr (Ty.array 4 (Ty.bitVec 8)) := constArray 4 (Ty.bitVec 8) (bv 0 8)
-      let outer : Expr (Ty.array 8 (Ty.array 4 (Ty.bitVec 8))) := constArray 8 (Ty.array 4 (Ty.bitVec 8)) inner
-      compileExpr outer =
+      let inner : Expr .all (Ty.array 4 (Ty.bitVec 8)) := constArray 4 (Ty.bitVec 8) (bv 0 8)
+      let outer : Expr .all (Ty.array 8 (Ty.array 4 (Ty.bitVec 8))) := constArray 8 (Ty.array 4 (Ty.bitVec 8)) inner
+      compileTestExpr outer =
         "((as const (Array (_ BitVec 8) (Array (_ BitVec 4) (_ BitVec 8)))) ((as const (Array (_ BitVec 4) (_ BitVec 8))) (_ bv0 8)))"
     )
 
@@ -223,16 +227,24 @@ def tyTests : TestSeq :=
 -- Test compileCmd
 def compileCmdTests : TestSeq :=
   group "compileCmd" $
-    test "declareConst" ((compileCmd (Cmd.declareConst "x" (Ty.bitVec 8))).2 = "(declare-const x (_ BitVec 8))")
+    test "declareConst" (
+      (compileCmd (Cmd.declareConst "x" (Ty.bitVec 8) : Cmd .bv _)).2 =
+        "(declare-const x (_ BitVec 8))")
 
 -- Test full program compilation
 def compileTests : TestSeq :=
   group "compile" $
+    test "Boolean-only language" (
+      let prog : Smt .bool Unit := do
+        let flag ← declareBool "flag"
+        assert flag
+      compile prog = "(set-logic QF_UF)\n(declare-const flag Bool)\n(assert flag)\n(check-sat)\n(get-model)"
+    ) $
     test "simple program" (
-      let prog : Smt Unit := do
+      let prog : Smt .bv Unit := do
         let x ← declareBV "x" 8
         assert (x =. bv 5 8)
-      compile prog = "(set-logic QF_ABV)\n(declare-const x (_ BitVec 8))\n(assert (= x (_ bv5 8)))\n(check-sat)\n(get-model)"
+      compile prog = "(set-logic QF_BV)\n(declare-const x (_ BitVec 8))\n(assert (= x (_ bv5 8)))\n(check-sat)\n(get-model)"
     ) $
     test "datatype program safe" (
       let point : DatatypeDecl := {
@@ -245,7 +257,7 @@ def compileTests : TestSeq :=
       }
       let xField : DatatypeFieldRef point :=
         point.fieldByName "x" (by simp [point, DatatypeDecl.fieldNames])
-      let prog : Smt Unit := do
+      let prog : Smt .all Unit := do
         let p ← declareDatatypeConstOf "p" point
         assert (selectField xField p =. bv 3 8)
       compile prog = "(set-logic ALL)\n(declare-datatype Point ((mkPoint (x (_ BitVec 8)) (y (_ BitVec 8)))))\n(declare-const p Point)\n(assert (= (x p) (_ bv3 8)))\n(check-sat)\n(get-model)"
@@ -261,7 +273,7 @@ def compileTests : TestSeq :=
       }
       let xField : DatatypeFieldRef point :=
         point.fieldByName "x" (by simp [point, DatatypeDecl.fieldNames])
-      let prog : Smt Unit := do
+      let prog : Smt .all Unit := do
         let p ← declareDatatypeConstOf "p" point
         assert (selectField xField p =. bv 3 8)
       compile prog = "(set-logic ALL)\n(declare-datatype Point ((mkPoint (x (_ BitVec 8)) (y (_ BitVec 8)))))\n(declare-const p Point)\n(assert (= (x p) (_ bv3 8)))\n(check-sat)\n(get-model)"
@@ -277,7 +289,7 @@ def compileTests : TestSeq :=
       }
       let xField : DatatypeFieldRef point :=
         point.fieldByName "x" (by simp [point, DatatypeDecl.fieldNames])
-      let prog : Smt Unit := do
+      let prog : Smt .all Unit := do
         let p ← declareDatatypeConstOf "p" point
         assert (selectField xField p =. bv 3 8)
       compile prog = "(set-logic ALL)\n(declare-datatype Point ((mkPoint (x (_ BitVec 8)) (y (_ BitVec 8)))))\n(declare-const p Point)\n(assert (= (x p) (_ bv3 8)))\n(check-sat)\n(get-model)"
@@ -303,14 +315,14 @@ def compileTests : TestSeq :=
         outer.fieldByName "inner" (by simp [outer, inner, DatatypeDecl.fieldNames])
       let innerXField : DatatypeFieldRef inner :=
         inner.fieldByName "x" (by simp [inner, DatatypeDecl.fieldNames])
-      let prog : Smt Unit := do
+      let prog : Smt .all Unit := do
         let o ← declareDatatypeConstOf "o" outer
         let i := selectField outerInnerField o
         assert (selectField innerXField i =. bv 5 8)
       compile prog = "(set-logic ALL)\n(declare-datatype Inner ((mkInner (x (_ BitVec 8)) (y (_ BitVec 8)))))\n(declare-datatype Outer ((mkOuter (inner Inner) (tag (_ BitVec 8)))))\n(declare-const o Outer)\n(assert (= (x (inner o)) (_ bv5 8)))\n(check-sat)\n(get-model)"
     ) $
     test "nested array program" (
-      let prog : Smt Unit := do
+      let prog : Smt .abv Unit := do
         let a ← declareArray "a" 8 (Ty.array 4 (Ty.bitVec 8))
         let i ← declareBV "i" 8
         let j ← declareBV "j" 4
@@ -319,6 +331,263 @@ def compileTests : TestSeq :=
         assert (cell =. bv 3 8)
       compile prog = "(set-logic QF_ABV)\n(declare-const a (Array (_ BitVec 8) (Array (_ BitVec 4) (_ BitVec 8))))\n(declare-const i (_ BitVec 8))\n(declare-const j (_ BitVec 4))\n(assert (= (select (select a i) j) (_ bv3 8)))\n(check-sat)\n(get-model)"
     )
+
+def cnfMappingFixtureOk : Bool :=
+  let vars : VarSchema := [("flag", Ty.bool), ("x", Ty.bitVec 2)]
+  let output :=
+    "(goals (goal __smtlibdsl_bool_0 __smtlibdsl_bit_1_0 (not __smtlibdsl_bit_1_1) :precision precise :depth 3))"
+  match parseZ3CnfOutput vars output with
+  | .error _ => false
+  | .ok bridge =>
+    bridge.modelBits.toList == [
+      {
+        source := .bool 0 "flag"
+        proxy := "__smtlibdsl_bool_0"
+        dimacsVar := 1
+      },
+      {
+        source := .bit 1 "x" 2 0
+        proxy := "__smtlibdsl_bit_1_0"
+        dimacsVar := 2
+      },
+      {
+        source := .bit 1 "x" 2 1
+        proxy := "__smtlibdsl_bit_1_1"
+        dimacsVar := 3
+      }
+    ] &&
+    bridge.numVars == 3 &&
+    bridge.numClauses == 3 &&
+    (bridge.dimacs.splitOn "p cnf 3 3").length == 2
+
+def checkedModelProgram : Smt .bv Unit := do
+  let x ← declareBV "checked_x" 4
+  let flag ← declareBool "checked_flag"
+  assert (x =. bv 5 4)
+  assert flag
+
+def leanModelCheckerOk : Bool :=
+  let good : Model checkedModelProgram.schema :=
+    ⟨[("checked_x", "5"), ("checked_flag", "true")]⟩
+  let bad : Model checkedModelProgram.schema :=
+    ⟨[("checked_x", "4"), ("checked_flag", "true")]⟩
+  let goodAccepted :=
+    match checkBvModel checkedModelProgram good with
+    | .ok () => true
+    | .error _ => false
+  let badRejected :=
+    match checkBvModel checkedModelProgram bad with
+    | .ok () => false
+    | .error _ => true
+  goodAccepted && badRejected
+
+/-- A capability-polymorphic BV fragment composes in both `.bv` and `.abv`
+programs, while array commands remain unavailable in `.bv`. -/
+def reusableBvFragment [Language.HasBV lang] : Smt lang Unit := do
+  let x ← declareBV "fragment_x" 4
+  assert (x <.ᵤ bv 10 4)
+
+def composedAbvProgram : Smt .abv Unit := do
+  reusableBvFragment
+  let memory ← declareArray "fragment_memory" 4 (Ty.bitVec 4)
+  assert (selectArr memory (bv 0 4) =. bv 3 4)
+
+theorem arraysAreUnavailableInBv (capability : Language.HasArray .bv) : False := by
+  cases capability.proof
+
+def languageCompositionOk : Bool :=
+  let script := compile composedAbvProgram
+  (script.splitOn "(set-logic QF_ABV)").length == 2 &&
+    (script.splitOn "(declare-const fragment_x (_ BitVec 4))").length == 2 &&
+    (script.splitOn "(declare-const fragment_memory (Array (_ BitVec 4) (_ BitVec 4)))").length == 2
+
+def backendAbstractionOk : Bool :=
+  (Solver.z3 : Solver .bool).name == "Z3" &&
+    (Solver.cvc5 : Solver .all).name == "cvc5" &&
+    (Solver.kissat : Solver .bv).name.endsWith "Kissat" &&
+    (Solver.cadical : Solver .bv).name.endsWith "CaDiCaL"
+
+def cnfTests : TestSeq :=
+  group "CNF bridge" $
+    test "preserves Boolean and LSB-first bit mappings" (cnfMappingFixtureOk = true) $
+    test "Lean checker accepts only satisfying decoded models" (leanModelCheckerOk = true) $
+    test "capability-polymorphic BV fragments compose in ABV" (languageCompositionOk = true) $
+    test "all SMT, CNF, and SAT implementations use generic interfaces" (backendAbstractionOk = true)
+
+def cnfIntegrationProgram : Smt .bv Unit := do
+  let x ← declareBV "integration_x" 4
+  let flag ← declareBool "integration_flag"
+  assert (x =. bv 5 4)
+  assert flag
+
+def cnfUnsatIntegrationProgram : Smt .bv Unit := do
+  let x ← declareBV "unsat_x" 4
+  assert (x =. bv 1 4)
+  assert (x =. bv 2 4)
+
+def backendBoolProgram : Smt .bool Unit := do
+  let flag ← declareBool "backend_flag"
+  assert flag
+
+def backendAbvProgram : Smt .abv Unit := do
+  let memory ← declareArray "backend_memory" 4 (Ty.bitVec 8)
+  assert (selectArr memory (bv 0 4) =. bv 3 8)
+
+def backendPoint : DatatypeDecl := {
+  name := "BackendPoint"
+  constructor := "mkBackendPoint"
+  fields := [
+    { name := "backend_x", ty := Ty.bitVec 8 },
+    { name := "backend_y", ty := Ty.bitVec 8 }
+  ]
+}
+
+def backendPointX : DatatypeFieldRef backendPoint :=
+  backendPoint.fieldByName "backend_x" (by
+    simp [backendPoint, DatatypeDecl.fieldNames])
+
+def backendAllProgram : Smt .all Unit := do
+  let point ← declareDatatypeConstOf "backend_point" backendPoint
+  assert (selectField backendPointX point =. bv 7 8)
+
+def runSmtBackendIntegration : IO (Except String Unit) := do
+  match ← checkSolver (.cvc5 : Solver .bool) with
+  | .error reason =>
+    IO.println s!"cvc5 integration skipped: {reason}"
+    return .ok ()
+  | .ok version =>
+    let boolResult ← solve .cvc5 backendBoolProgram
+    let boolModel ←
+      match boolResult with
+      | .sat model => pure model
+      | result => return .error s!"expected SAT from cvc5/.bool, got {result}"
+    match boolModel.get "backend_flag" .bool with
+    | .ok true => pure ()
+    | _ => return .error "cvc5 Boolean model did not satisfy the query"
+
+    let z3Result ← solve .z3 cnfIntegrationProgram
+    let cvc5Result ← solve .cvc5 cnfIntegrationProgram
+    if !SmtLibDsl.sameSatStatus z3Result cvc5Result then
+      return .error s!"Z3/cvc5 status mismatch: {z3Result} versus {cvc5Result}"
+    let z3Model ←
+      match z3Result with
+      | .sat model => pure model
+      | result => return .error s!"expected SAT from Z3/.bv, got {result}"
+    let cvc5Model ←
+      match cvc5Result with
+      | .sat model => pure model
+      | result => return .error s!"expected SAT from cvc5/.bv, got {result}"
+    match checkBvModel cnfIntegrationProgram z3Model,
+        checkBvModel cnfIntegrationProgram cvc5Model with
+    | .ok (), .ok () => pure ()
+    | _, _ =>
+      return .error "a direct SMT bit-vector model failed Lean replay"
+
+    let z3Unsat ← solve .z3 cnfUnsatIntegrationProgram
+    let cvc5Unsat ← solve .cvc5 cnfUnsatIntegrationProgram
+    match z3Unsat, cvc5Unsat with
+    | .unsat, .unsat => pure ()
+    | lhs, rhs =>
+      return .error s!"expected UNSAT from Z3 and cvc5, got {lhs} and {rhs}"
+
+    let abvResult ← solve .cvc5 backendAbvProgram
+    let abvModel ←
+      match abvResult with
+      | .sat model => pure model
+      | result => return .error s!"expected SAT from cvc5/.abv, got {result}"
+    match abvModel.get "backend_memory" (Ty.array 4 (Ty.bitVec 8)) with
+    | .ok _ => pure ()
+    | .error error => return .error s!"failed to decode cvc5 array model: {error}"
+
+    let allResult ← solve .cvc5 backendAllProgram
+    let allModel ←
+      match allResult with
+      | .sat model => pure model
+      | result => return .error s!"expected SAT from cvc5/.all, got {result}"
+    let point ←
+      match allModel.get "backend_point" (Ty.datatype backendPoint) with
+      | .ok point => pure point
+      | .error error => return .error s!"failed to decode cvc5 datatype model: {error}"
+    match point.getField backendPointX with
+    | .ok x =>
+      if x.toNat != 7 then
+        return .error s!"cvc5 datatype model has backend_x={x.toNat}, expected 7"
+    | .error error =>
+      return .error s!"failed to read cvc5 datatype field: {error}"
+
+    IO.println s!"SMT backends: Z3 and {version} agree"
+    return .ok ()
+
+def runCnfIntegration : IO (Except String Unit) := do
+  let bridged ← bridgeToCnf cnfIntegrationProgram
+  let bridge ←
+    match bridged with
+    | .ok bridge => pure bridge
+    | .error error => return .error error
+  let expectedSources := [
+    SmtLibDsl.SMT.SourceBit.bit 0 "integration_x" 4 0,
+    SmtLibDsl.SMT.SourceBit.bit 0 "integration_x" 4 1,
+    SmtLibDsl.SMT.SourceBit.bit 0 "integration_x" 4 2,
+    SmtLibDsl.SMT.SourceBit.bit 0 "integration_x" 4 3,
+    SmtLibDsl.SMT.SourceBit.bool 1 "integration_flag"
+  ]
+  if bridge.modelBits.toList.map ModelBitMapping.source != expectedSources then
+    return .error s!"unexpected source-bit mapping: {repr bridge.modelBits}"
+  match ← checkSolver (.kissat : Solver .bv) with
+  | .error reason =>
+    IO.println s!"CNF integration skipped: {reason}"
+    return .ok ()
+  | .ok _ =>
+    let z3Result ← solve .z3 cnfIntegrationProgram
+    let kissatResult ← solve .kissat cnfIntegrationProgram
+    if !SmtLibDsl.sameSatStatus z3Result kissatResult then
+      return .error s!"Z3/Kissat status mismatch: {z3Result} versus {kissatResult}"
+    let satValidation : Except String Unit :=
+      match z3Result, kissatResult with
+      | .sat z3Model, .sat kissatModel =>
+        match z3Model.get "integration_x" (.bitVec 4),
+            kissatModel.get "integration_x" (.bitVec 4) with
+        | .ok z3X, .ok kissatX =>
+          if z3X.toNat == 5 && kissatX.toNat == 5 then .ok ()
+          else .error "decoded integration model has the wrong bit-vector value"
+        | _, _ => .error "integration model is missing integration_x"
+      | _, _ =>
+        .error s!"expected SAT from both solvers, got {z3Result} and {kissatResult}"
+    if let .error error := satValidation then
+      return .error error
+    let z3Unsat ← solve .z3 cnfUnsatIntegrationProgram
+    let kissatUnsat ← solve .kissat cnfUnsatIntegrationProgram
+    match z3Unsat, kissatUnsat with
+    | .unsat, .unsat => return .ok ()
+    | _, _ =>
+      return .error s!"expected UNSAT from both solvers, got {z3Unsat} and {kissatUnsat}"
+
+def runCadicalIntegration : IO (Except String Unit) := do
+  match ← checkSolver (.cadical : Solver .bv) with
+  | .error reason =>
+    IO.println s!"CaDiCaL integration skipped: {reason}"
+    return .ok ()
+  | .ok version =>
+    let z3Result ← solve .z3 cnfIntegrationProgram
+    let cadicalResult ← solve .cadical cnfIntegrationProgram
+    if !SmtLibDsl.sameSatStatus z3Result cadicalResult then
+      return .error s!"Z3/CaDiCaL status mismatch: {z3Result} versus {cadicalResult}"
+    match cadicalResult with
+    | .sat model =>
+      match model.get "integration_x" (.bitVec 4) with
+      | .ok x =>
+        if x.toNat != 5 then
+          return .error s!"CaDiCaL decoded integration_x={x.toNat}, expected 5"
+      | .error error => return .error error
+    | result => return .error s!"expected SAT from CaDiCaL, got {result}"
+    let z3Unsat ← solve .z3 cnfUnsatIntegrationProgram
+    let cadicalUnsat ← solve .cadical cnfUnsatIntegrationProgram
+    match z3Unsat, cadicalUnsat with
+    | .unsat, .unsat =>
+      IO.println s!"CaDiCaL {version}: SAT/UNSAT and Lean model replay passed"
+      return .ok ()
+    | lhs, rhs =>
+      return .error s!"expected UNSAT from Z3 and CaDiCaL, got {lhs} and {rhs}"
 
 def impTokenizeOk : Bool :=
   match tokenize "x := 1; skip" with
@@ -371,10 +640,25 @@ def impTests : TestSeq :=
 
 -- All tests
 def allTests : TestSeq :=
-  tyTests ++ compileExprTests ++ compileCmdTests ++ compileTests ++ impTests
+  tyTests ++ compileExprTests ++ compileCmdTests ++ compileTests ++ cnfTests ++ impTests
 
 -- Main entry point for running tests
 def main : IO UInt32 := do
+  match ← runSmtBackendIntegration with
+  | .error error =>
+    IO.eprintln s!"SMT backend integration failed: {error}"
+    return 1
+  | .ok () => pure ()
+  match ← runCnfIntegration with
+  | .error error =>
+    IO.eprintln s!"CNF integration failed: {error}"
+    return 1
+  | .ok () => pure ()
+  match ← runCadicalIntegration with
+  | .error error =>
+    IO.eprintln s!"CaDiCaL integration failed: {error}"
+    return 1
+  | .ok () => pure ()
   let (success, msg) := allTests.run
   if success then
     IO.println msg

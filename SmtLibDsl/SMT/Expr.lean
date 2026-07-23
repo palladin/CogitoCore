@@ -29,6 +29,82 @@ deriving Repr
 
 end
 
+/-- The SMT-LIB language accepted by an expression or program.
+
+Each constructor is a capability bound: it is impossible to construct an
+array term in `bv`, for example. -/
+inductive Language where
+  | bool
+  | bv
+  | abv
+  | all
+deriving Repr, DecidableEq
+
+/-- Unforgeable evidence that a language contains fixed-size bit-vectors. -/
+inductive Language.AllowsBV : Language → Prop where
+  | bv : AllowsBV .bv
+  | abv : AllowsBV .abv
+  | all : AllowsBV .all
+
+/-- Unforgeable evidence that a language contains arrays. -/
+inductive Language.AllowsArray : Language → Prop where
+  | abv : AllowsArray .abv
+  | all : AllowsArray .all
+
+/-- Unforgeable evidence that a language contains algebraic datatypes. -/
+inductive Language.AllowsDatatype : Language → Prop where
+  | all : AllowsDatatype .all
+
+/-- Typeclass-facing fixed-size bit-vector capability. -/
+class Language.HasBV (lang : Language) : Prop where
+  proof : Language.AllowsBV lang
+
+/-- Typeclass-facing array capability. -/
+class Language.HasArray (lang : Language) : Prop where
+  proof : Language.AllowsArray lang
+
+/-- Typeclass-facing datatype capability. -/
+class Language.HasDatatype (lang : Language) : Prop where
+  proof : Language.AllowsDatatype lang
+
+instance : Language.HasBV .bv := ⟨.bv⟩
+instance : Language.HasBV .abv := ⟨.abv⟩
+instance : Language.HasBV .all := ⟨.all⟩
+
+instance : Language.HasArray .abv := ⟨.abv⟩
+instance : Language.HasArray .all := ⟨.all⟩
+
+instance : Language.HasDatatype .all := ⟨.all⟩
+
+/-- Unforgeable evidence that an SMT sort is available in a language. -/
+inductive Ty.Allowed : Language → Ty → Prop where
+  | bool : Ty.Allowed lang .bool
+  | bitVec : Language.AllowsBV lang → Ty.Allowed lang (.bitVec n)
+  | array : Language.AllowsArray lang → Ty.Allowed lang elem →
+      Ty.Allowed lang (.array idxWidth elem)
+  | datatype : Language.AllowsDatatype lang → Ty.Allowed lang (.datatype decl)
+
+/-- Typeclass-facing evidence that an SMT sort is available in a language. -/
+class Ty.Supported (lang : Language) (ty : Ty) : Prop where
+  proof : Ty.Allowed lang ty
+
+instance : Ty.Supported lang .bool := ⟨.bool⟩
+instance [capability : Language.HasBV lang] : Ty.Supported lang (.bitVec n) :=
+  ⟨.bitVec capability.proof⟩
+instance [capability : Language.HasArray lang] [element : Ty.Supported lang elem] :
+    Ty.Supported lang (.array idxWidth elem) :=
+  ⟨.array capability.proof element.proof⟩
+instance [capability : Language.HasDatatype lang] :
+    Ty.Supported lang (.datatype decl) :=
+  ⟨.datatype capability.proof⟩
+
+/-- The SMT-LIB logic name associated with an exact language bound. -/
+def Language.smtLogic : Language → String
+  | .bool => "QF_UF"
+  | .bv => "QF_BV"
+  | .abv => "QF_ABV"
+  | .all => "ALL"
+
 /-- Generic SMT S-expression value for decoded model terms. -/
 inductive SExpr where
   | atom (value : String)
@@ -57,7 +133,7 @@ private partial def takeBalanced (cs : List Char) : Option (String × List Char)
       let depth' := if c == '(' then depth + 1 else if c == ')' then depth - 1 else depth
       let acc' := c :: acc
       if depth' == 0 then
-        some (String.mk acc'.reverse, rest)
+        some (String.ofList acc'.reverse, rest)
       else
         go depth' acc' rest
   match cs with
@@ -111,7 +187,7 @@ def DatatypeFieldRef.field {decl : DatatypeDecl} (fieldRef : DatatypeFieldRef de
   decl.fields.get fieldRef.idx
 
 /-- Membership proof of a field handle in the datatype declaration. -/
-def DatatypeFieldRef.inDecl {decl : DatatypeDecl} (fieldRef : DatatypeFieldRef decl) : fieldRef.field ∈ decl.fields := by
+theorem DatatypeFieldRef.inDecl {decl : DatatypeDecl} (fieldRef : DatatypeFieldRef decl) : fieldRef.field ∈ decl.fields := by
   exact List.get_mem decl.fields fieldRef.idx
 
 /-- Field names declared by a datatype. -/
@@ -272,11 +348,11 @@ private def binToNat? (s : String) : Option Nat :=
 def parseBitVec (s : String) (n : Nat) : Option (BitVec n) :=
   if s.startsWith "#x" then
     -- Hexadecimal: #x09
-    let hexStr := s.drop 2
+    let hexStr := (s.drop 2).toString
     hexToNat? hexStr |>.map (BitVec.ofNat n)
   else if s.startsWith "#b" then
     -- Binary: #b101
-    let binStr := s.drop 2
+    let binStr := (s.drop 2).toString
     binToNat? binStr |>.map (BitVec.ofNat n)
   else
     -- Try decimal
@@ -373,142 +449,175 @@ def Ty.parse (ty : Ty) (s : String) : Option ty.LeanType :=
 def Ty.parseArray? (idxWidth : Nat) (elem : Ty) (s : String) : Option (ArrayValue idxWidth (Ty.LeanType elem)) :=
   Ty.parse (Ty.array idxWidth elem) s
 
-/-- Expressions indexed by sort, ensuring width-correctness at compile time -/
-inductive Expr : Ty → Type where
+/-- Expressions indexed by sort and language.
+
+The sort index enforces width correctness.  The language index additionally
+prevents terms from using a theory that the surrounding program did not opt
+into. -/
+inductive ExprF (lang : Language) : Ty → Type where
   -- Variables
-  | var     : String → (ty : Ty) → Expr ty
+  | var     : String → (ty : Ty) → [Ty.Supported lang ty] → ExprF lang ty
 
   -- Boolean literals
-  | btrue   : Expr Ty.bool
-  | bfalse  : Expr Ty.bool
+  | btrue   : ExprF lang Ty.bool
+  | bfalse  : ExprF lang Ty.bool
 
   -- Boolean operations
-  | and     : Expr Ty.bool → Expr Ty.bool → Expr Ty.bool
-  | or      : Expr Ty.bool → Expr Ty.bool → Expr Ty.bool
-  | not     : Expr Ty.bool → Expr Ty.bool
-  | imp     : Expr Ty.bool → Expr Ty.bool → Expr Ty.bool
-  | boolEq  : Expr Ty.bool → Expr Ty.bool → Expr Ty.bool
-  | ite : Expr Ty.bool → Expr s → Expr s → Expr s
+  | and     : ExprF lang Ty.bool → ExprF lang Ty.bool → ExprF lang Ty.bool
+  | or      : ExprF lang Ty.bool → ExprF lang Ty.bool → ExprF lang Ty.bool
+  | not     : ExprF lang Ty.bool → ExprF lang Ty.bool
+  | imp     : ExprF lang Ty.bool → ExprF lang Ty.bool → ExprF lang Ty.bool
+  | boolEq  : ExprF lang Ty.bool → ExprF lang Ty.bool → ExprF lang Ty.bool
+  | ite : ExprF lang Ty.bool → ExprF lang s → ExprF lang s → ExprF lang s
 
   -- BitVector literals
-  | bvLit   : (val : Nat) → (n : Nat) → Expr (Ty.bitVec n)
+  | bvLit   : (val : Nat) → (n : Nat) → [Language.HasBV lang] → ExprF lang (Ty.bitVec n)
 
   -- BitVector arithmetic (width-preserving)
-  | bvAdd   : Expr (Ty.bitVec n) → Expr (Ty.bitVec n) → Expr (Ty.bitVec n)
-  | bvSub   : Expr (Ty.bitVec n) → Expr (Ty.bitVec n) → Expr (Ty.bitVec n)
-  | bvMul   : Expr (Ty.bitVec n) → Expr (Ty.bitVec n) → Expr (Ty.bitVec n)
-  | bvUDiv  : Expr (Ty.bitVec n) → Expr (Ty.bitVec n) → Expr (Ty.bitVec n)
-  | bvSDiv  : Expr (Ty.bitVec n) → Expr (Ty.bitVec n) → Expr (Ty.bitVec n)
-  | bvURem  : Expr (Ty.bitVec n) → Expr (Ty.bitVec n) → Expr (Ty.bitVec n)
-  | bvSMod  : Expr (Ty.bitVec n) → Expr (Ty.bitVec n) → Expr (Ty.bitVec n)
-  | bvSRem  : Expr (Ty.bitVec n) → Expr (Ty.bitVec n) → Expr (Ty.bitVec n)
-  | bvNeg   : Expr (Ty.bitVec n) → Expr (Ty.bitVec n)
+  | bvAdd   : ExprF lang (Ty.bitVec n) → ExprF lang (Ty.bitVec n) → ExprF lang (Ty.bitVec n)
+  | bvSub   : ExprF lang (Ty.bitVec n) → ExprF lang (Ty.bitVec n) → ExprF lang (Ty.bitVec n)
+  | bvMul   : ExprF lang (Ty.bitVec n) → ExprF lang (Ty.bitVec n) → ExprF lang (Ty.bitVec n)
+  | bvUDiv  : ExprF lang (Ty.bitVec n) → ExprF lang (Ty.bitVec n) → ExprF lang (Ty.bitVec n)
+  | bvSDiv  : ExprF lang (Ty.bitVec n) → ExprF lang (Ty.bitVec n) → ExprF lang (Ty.bitVec n)
+  | bvURem  : ExprF lang (Ty.bitVec n) → ExprF lang (Ty.bitVec n) → ExprF lang (Ty.bitVec n)
+  | bvSMod  : ExprF lang (Ty.bitVec n) → ExprF lang (Ty.bitVec n) → ExprF lang (Ty.bitVec n)
+  | bvSRem  : ExprF lang (Ty.bitVec n) → ExprF lang (Ty.bitVec n) → ExprF lang (Ty.bitVec n)
+  | bvNeg   : ExprF lang (Ty.bitVec n) → ExprF lang (Ty.bitVec n)
 
   -- Bitwise operations
-  | bvAnd   : Expr (Ty.bitVec n) → Expr (Ty.bitVec n) → Expr (Ty.bitVec n)
-  | bvOr    : Expr (Ty.bitVec n) → Expr (Ty.bitVec n) → Expr (Ty.bitVec n)
-  | bvXor   : Expr (Ty.bitVec n) → Expr (Ty.bitVec n) → Expr (Ty.bitVec n)
-  | bvNot   : Expr (Ty.bitVec n) → Expr (Ty.bitVec n)
-  | bvNand  : Expr (Ty.bitVec n) → Expr (Ty.bitVec n) → Expr (Ty.bitVec n)
-  | bvNor   : Expr (Ty.bitVec n) → Expr (Ty.bitVec n) → Expr (Ty.bitVec n)
-  | bvXnor  : Expr (Ty.bitVec n) → Expr (Ty.bitVec n) → Expr (Ty.bitVec n)
+  | bvAnd   : ExprF lang (Ty.bitVec n) → ExprF lang (Ty.bitVec n) → ExprF lang (Ty.bitVec n)
+  | bvOr    : ExprF lang (Ty.bitVec n) → ExprF lang (Ty.bitVec n) → ExprF lang (Ty.bitVec n)
+  | bvXor   : ExprF lang (Ty.bitVec n) → ExprF lang (Ty.bitVec n) → ExprF lang (Ty.bitVec n)
+  | bvNot   : ExprF lang (Ty.bitVec n) → ExprF lang (Ty.bitVec n)
+  | bvNand  : ExprF lang (Ty.bitVec n) → ExprF lang (Ty.bitVec n) → ExprF lang (Ty.bitVec n)
+  | bvNor   : ExprF lang (Ty.bitVec n) → ExprF lang (Ty.bitVec n) → ExprF lang (Ty.bitVec n)
+  | bvXnor  : ExprF lang (Ty.bitVec n) → ExprF lang (Ty.bitVec n) → ExprF lang (Ty.bitVec n)
 
   -- Shifts
-  | bvShl   : Expr (Ty.bitVec n) → Expr (Ty.bitVec n) → Expr (Ty.bitVec n)
-  | bvLShr  : Expr (Ty.bitVec n) → Expr (Ty.bitVec n) → Expr (Ty.bitVec n)
-  | bvAShr  : Expr (Ty.bitVec n) → Expr (Ty.bitVec n) → Expr (Ty.bitVec n)
-  | rotateLeft  : (i : Nat) → Expr (Ty.bitVec n) → Expr (Ty.bitVec n)
-  | rotateRight : (i : Nat) → Expr (Ty.bitVec n) → Expr (Ty.bitVec n)
+  | bvShl   : ExprF lang (Ty.bitVec n) → ExprF lang (Ty.bitVec n) → ExprF lang (Ty.bitVec n)
+  | bvLShr  : ExprF lang (Ty.bitVec n) → ExprF lang (Ty.bitVec n) → ExprF lang (Ty.bitVec n)
+  | bvAShr  : ExprF lang (Ty.bitVec n) → ExprF lang (Ty.bitVec n) → ExprF lang (Ty.bitVec n)
+  | rotateLeft  : (i : Nat) → ExprF lang (Ty.bitVec n) → ExprF lang (Ty.bitVec n)
+  | rotateRight : (i : Nat) → ExprF lang (Ty.bitVec n) → ExprF lang (Ty.bitVec n)
 
   -- Comparisons (return Bool)
-  | bvEq    : Expr (Ty.bitVec n) → Expr (Ty.bitVec n) → Expr Ty.bool
-  | bvULt   : Expr (Ty.bitVec n) → Expr (Ty.bitVec n) → Expr Ty.bool
-  | bvULe   : Expr (Ty.bitVec n) → Expr (Ty.bitVec n) → Expr Ty.bool
-  | bvUGt   : Expr (Ty.bitVec n) → Expr (Ty.bitVec n) → Expr Ty.bool
-  | bvUGe   : Expr (Ty.bitVec n) → Expr (Ty.bitVec n) → Expr Ty.bool
-  | bvSLt   : Expr (Ty.bitVec n) → Expr (Ty.bitVec n) → Expr Ty.bool
-  | bvSLe   : Expr (Ty.bitVec n) → Expr (Ty.bitVec n) → Expr Ty.bool
-  | bvSGt   : Expr (Ty.bitVec n) → Expr (Ty.bitVec n) → Expr Ty.bool
-  | bvSGe   : Expr (Ty.bitVec n) → Expr (Ty.bitVec n) → Expr Ty.bool
-  | bvComp  : Expr (Ty.bitVec n) → Expr (Ty.bitVec n) → Expr (Ty.bitVec 1)
+  | bvEq    : ExprF lang (Ty.bitVec n) → ExprF lang (Ty.bitVec n) → ExprF lang Ty.bool
+  | bvULt   : ExprF lang (Ty.bitVec n) → ExprF lang (Ty.bitVec n) → ExprF lang Ty.bool
+  | bvULe   : ExprF lang (Ty.bitVec n) → ExprF lang (Ty.bitVec n) → ExprF lang Ty.bool
+  | bvUGt   : ExprF lang (Ty.bitVec n) → ExprF lang (Ty.bitVec n) → ExprF lang Ty.bool
+  | bvUGe   : ExprF lang (Ty.bitVec n) → ExprF lang (Ty.bitVec n) → ExprF lang Ty.bool
+  | bvSLt   : ExprF lang (Ty.bitVec n) → ExprF lang (Ty.bitVec n) → ExprF lang Ty.bool
+  | bvSLe   : ExprF lang (Ty.bitVec n) → ExprF lang (Ty.bitVec n) → ExprF lang Ty.bool
+  | bvSGt   : ExprF lang (Ty.bitVec n) → ExprF lang (Ty.bitVec n) → ExprF lang Ty.bool
+  | bvSGe   : ExprF lang (Ty.bitVec n) → ExprF lang (Ty.bitVec n) → ExprF lang Ty.bool
+  | bvComp  : ExprF lang (Ty.bitVec n) → ExprF lang (Ty.bitVec n) → ExprF lang (Ty.bitVec 1)
 
   -- Width-changing operations
-  | concat  : Expr (Ty.bitVec m) → Expr (Ty.bitVec n) → Expr (Ty.bitVec (m + n))
-  | extract : (hi lo : Nat) → Expr (Ty.bitVec n) → Expr (Ty.bitVec (hi - lo + 1))
-  | zeroExt : (i : Nat) → Expr (Ty.bitVec n) → Expr (Ty.bitVec (n + i))
-  | signExt : (i : Nat) → Expr (Ty.bitVec n) → Expr (Ty.bitVec (n + i))
-  | repeat  : (i : Nat) → Expr (Ty.bitVec n) → Expr (Ty.bitVec (i * n))
+  | concat  : ExprF lang (Ty.bitVec m) → ExprF lang (Ty.bitVec n) → ExprF lang (Ty.bitVec (m + n))
+  | extract : (hi lo : Nat) → ExprF lang (Ty.bitVec n) → ExprF lang (Ty.bitVec (hi - lo + 1))
+  | zeroExt : (i : Nat) → ExprF lang (Ty.bitVec n) → ExprF lang (Ty.bitVec (n + i))
+  | signExt : (i : Nat) → ExprF lang (Ty.bitVec n) → ExprF lang (Ty.bitVec (n + i))
+  | repeat  : (i : Nat) → ExprF lang (Ty.bitVec n) → ExprF lang (Ty.bitVec (i * n))
 
   -- Overflow predicates (return Bool)
-  | bvNegO  : Expr (Ty.bitVec n) → Expr Ty.bool
-  | bvUAddO : Expr (Ty.bitVec n) → Expr (Ty.bitVec n) → Expr Ty.bool
-  | bvSAddO : Expr (Ty.bitVec n) → Expr (Ty.bitVec n) → Expr Ty.bool
-  | bvUMulO : Expr (Ty.bitVec n) → Expr (Ty.bitVec n) → Expr Ty.bool
-  | bvSMulO : Expr (Ty.bitVec n) → Expr (Ty.bitVec n) → Expr Ty.bool
+  | bvNegO  : ExprF lang (Ty.bitVec n) → ExprF lang Ty.bool
+  | bvUAddO : ExprF lang (Ty.bitVec n) → ExprF lang (Ty.bitVec n) → ExprF lang Ty.bool
+  | bvSAddO : ExprF lang (Ty.bitVec n) → ExprF lang (Ty.bitVec n) → ExprF lang Ty.bool
+  | bvUMulO : ExprF lang (Ty.bitVec n) → ExprF lang (Ty.bitVec n) → ExprF lang Ty.bool
+  | bvSMulO : ExprF lang (Ty.bitVec n) → ExprF lang (Ty.bitVec n) → ExprF lang Ty.bool
 
   -- Array operations
-  | mkArray : (idxWidth : Nat) → (elem : Ty) → Expr elem → Expr (Ty.array idxWidth elem)
-  | select  : Expr (Ty.array idxWidth elem) → Expr (Ty.bitVec idxWidth) → Expr elem
-  | store   : Expr (Ty.array idxWidth elem) → Expr (Ty.bitVec idxWidth) → Expr elem → Expr (Ty.array idxWidth elem)
-  | arrEq   : Expr (Ty.array idxWidth elem) → Expr (Ty.array idxWidth elem) → Expr Ty.bool
+  | mkArray : (idxWidth : Nat) → (elem : Ty) → ExprF lang elem →
+      [Language.HasArray lang] → ExprF lang (Ty.array idxWidth elem)
+  | select  : ExprF lang (Ty.array idxWidth elem) → ExprF lang (Ty.bitVec idxWidth) → ExprF lang elem
+  | store   : ExprF lang (Ty.array idxWidth elem) → ExprF lang (Ty.bitVec idxWidth) →
+      ExprF lang elem → ExprF lang (Ty.array idxWidth elem)
+  | arrEq   : ExprF lang (Ty.array idxWidth elem) → ExprF lang (Ty.array idxWidth elem) → ExprF lang Ty.bool
 
   -- Datatype equality
-  | dtEq    : Expr (Ty.datatype decl) → Expr (Ty.datatype decl) → Expr Ty.bool
+  | dtEq    : ExprF lang (Ty.datatype decl) → ExprF lang (Ty.datatype decl) → ExprF lang Ty.bool
 
   -- Distinct constraint (names stored directly to avoid nested inductive issue)
-  | distinctBV : (n : Nat) → (names : List String) → Expr Ty.bool
+  | distinctBV : (n : Nat) → (names : List String) →
+      [Language.HasBV lang] → ExprF lang Ty.bool
 
   -- Datatype field selector
-  | dtSelect : (field : String) → (retTy : Ty) → Expr (Ty.datatype decl) → Expr retTy
+  | dtSelect : (field : String) → (retTy : Ty) →
+      ExprF lang (Ty.datatype decl) → ExprF lang retTy
+
+/-- Public language- and sort-indexed expression type. -/
+abbrev Expr (lang : Language) (ty : Ty) := ExprF lang ty
+
+namespace Expr
+
+export ExprF (
+  var btrue bfalse and or not imp boolEq ite bvLit
+  bvAdd bvSub bvMul bvUDiv bvSDiv bvURem bvSMod bvSRem bvNeg
+  bvAnd bvOr bvXor bvNot bvNand bvNor bvXnor
+  bvShl bvLShr bvAShr rotateLeft rotateRight
+  bvEq bvULt bvULe bvUGt bvUGe bvSLt bvSLe bvSGt bvSGe bvComp
+  concat extract zeroExt signExt «repeat»
+  bvNegO bvUAddO bvSAddO bvUMulO bvSMulO
+  mkArray select store arrEq dtEq distinctBV dtSelect
+)
+
+end Expr
 
 -- Smart constructors
 
-/-- Create a bitvector literal with value `val` and width `n` -/
-def bv (val n : Nat) : Expr (Ty.bitVec n) := Expr.bvLit val n
+/-- Create a bitvector literal in an exact, language-indexed expression. -/
+def bv (val n : Nat) [Language.HasBV lang] :
+    Expr lang (Ty.bitVec n) := Expr.bvLit val n
 
 /-- Boolean true -/
-def btrue : Expr Ty.bool := Expr.btrue
+def btrue : Expr lang Ty.bool := Expr.btrue
 
 /-- Boolean false -/
-def bfalse : Expr Ty.bool := Expr.bfalse
+def bfalse : Expr lang Ty.bool := Expr.bfalse
 
 /-- Create a constant array where all indices map to the same value. -/
-def constArray (idxWidth : Nat) (elem : Ty) (v : Expr elem) : Expr (Ty.array idxWidth elem) :=
+def constArray (idxWidth : Nat) (elem : Ty) (v : Expr lang elem)
+    [Language.HasArray lang] : Expr lang (Ty.array idxWidth elem) :=
   Expr.mkArray idxWidth elem v
 
 /-- Read from an array at index -/
-def selectArr (arr : Expr (Ty.array idxWidth elem)) (i : Expr (Ty.bitVec idxWidth)) : Expr elem :=
+def selectArr (arr : Expr lang (Ty.array idxWidth elem))
+    (i : Expr lang (Ty.bitVec idxWidth)) : Expr lang elem :=
   Expr.select arr i
 
 /-- Write to an array at index, returning new array -/
-def storeArr (arr : Expr (Ty.array idxWidth elem)) (i : Expr (Ty.bitVec idxWidth)) (v : Expr elem) : Expr (Ty.array idxWidth elem) :=
+def storeArr (arr : Expr lang (Ty.array idxWidth elem))
+    (i : Expr lang (Ty.bitVec idxWidth)) (v : Expr lang elem) :
+    Expr lang (Ty.array idxWidth elem) :=
   Expr.store arr i v
 
 /-- Field selection using a proof-carrying field handle.
   The return type is inferred from the selected field. -/
 def selectField {decl : DatatypeDecl} (fieldRef : DatatypeFieldRef decl)
-  (rec : Expr (Ty.datatype decl)) : Expr fieldRef.field.ty :=
+  (rec : Expr lang (Ty.datatype decl)) : Expr lang fieldRef.field.ty :=
   Expr.dtSelect fieldRef.field.name fieldRef.field.ty rec
 
 /-- Extract variable name from a variable expression -/
-def Expr.varName : Expr ty → Option String
-  | .var name _ => some name
+def Expr.varName : Expr lang ty → Option String
+  | @ExprF.var _ name _ _ => some name
   | _ => none
 
 /-- Assert all bitvector expressions are pairwise distinct (List version).
     Only works on variable expressions - extracts their names for the distinct constraint. -/
-def distinct (es : List (Expr (Ty.bitVec n))) : Expr Ty.bool :=
+def distinct (es : List (Expr lang (Ty.bitVec n))) [Language.HasBV lang] :
+    Expr lang Ty.bool :=
   let names := es.filterMap Expr.varName
   Expr.distinctBV n names
 
 /-- Assert all bitvector expressions are pairwise distinct (Vector version) -/
-def distinctV (es : Vector (Expr (Ty.bitVec n)) m) : Expr Ty.bool :=
+def distinctV (es : Vector (Expr lang (Ty.bitVec n)) m) [Language.HasBV lang] :
+    Expr lang Ty.bool :=
   distinct es.toList
 
-class HasSmtEq (s : Ty) where
-  eqExpr : Expr s → Expr s → Expr Ty.bool
+class HasSmtEq (lang : Language) (s : Ty) where
+  eqExpr : Expr lang s → Expr lang s → Expr lang Ty.bool
 
-instance (s : Ty) : HasSmtEq s where
+instance (s : Ty) : HasSmtEq lang s where
   eqExpr := by
     cases s with
     | bool => exact Expr.boolEq
@@ -516,7 +625,7 @@ instance (s : Ty) : HasSmtEq s where
     | array _ _ => exact Expr.arrEq
     | datatype _ => exact Expr.dtEq
 
-def smtEq {s : Ty} [HasSmtEq s] (lhs rhs : Expr s) : Expr Ty.bool :=
+def smtEq {s : Ty} [HasSmtEq lang s] (lhs rhs : Expr lang s) : Expr lang Ty.bool :=
   HasSmtEq.eqExpr lhs rhs
 
 -- Notation (scoped to SMT namespace)

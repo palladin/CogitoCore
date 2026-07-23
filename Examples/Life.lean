@@ -118,23 +118,23 @@ def lookup (r : Fin m) (c : Fin n) (dirs : List Dir) (e : α) (grid : Tensor2D m
 
 /-! ## SMT Grid Type -/
 
-abbrev SMTGrid := Tensor2D gridRows gridCols (Expr (Ty.bitVec 4))
+abbrev SMTGrid := Tensor2D gridRows gridCols (Expr .bv (Ty.bitVec 4))
 
 /-- Integer constant in SMT (using 4-bit bitvector) -/
-def int (n : Nat) : Expr (Ty.bitVec 4) := bv n 4
+def int (n : Nat) : Expr .bv (Ty.bitVec 4) := bv n 4
 
 /-- Add a list of SMT expressions -/
-def add (exprs : List (Expr (Ty.bitVec 4))) : Expr (Ty.bitVec 4) :=
+def add (exprs : List (Expr .bv (Ty.bitVec 4))) : Expr .bv (Ty.bitVec 4) :=
   exprs.foldl (· +. ·) (int 0)
 
 /-! ## Neighbor Counting -/
 
 /-- Lookup with default 0 for out-of-bounds -/
-def lookupCell (r : Fin gridRows) (c : Fin gridCols) (dirs : List Dir) (grid : SMTGrid) : Expr (Ty.bitVec 4) :=
+def lookupCell (r : Fin gridRows) (c : Fin gridCols) (dirs : List Dir) (grid : SMTGrid) : Expr .bv (Ty.bitVec 4) :=
   lookup r c dirs (int 0) grid
 
 /-- Count live neighbors for a cell, handling boundary conditions -/
-def countNeighborhoods (r : Fin gridRows) (c : Fin gridCols) (grid : SMTGrid) : Expr (Ty.bitVec 4) :=
+def countNeighborhoods (r : Fin gridRows) (c : Fin gridCols) (grid : SMTGrid) : Expr .bv (Ty.bitVec 4) :=
   let lookup' := fun dirs => lookupCell r c dirs grid
   match (toPos gridRows r, toPos gridCols c) with
   -- Corners: 3 neighbors
@@ -168,7 +168,7 @@ def countNeighborhoods (r : Fin gridRows) (c : Fin gridCols) (grid : SMTGrid) : 
 /-! ## Game of Life Rules -/
 
 /-- Conway's Game of Life rule for a single cell -/
-def cellRule (r : Fin gridRows) (c : Fin gridCols) (counters fromBoard toBoard : SMTGrid) : Expr Ty.bool :=
+def cellRule (r : Fin gridRows) (c : Fin gridCols) (counters fromBoard toBoard : SMTGrid) : Expr .bv Ty.bool :=
   let cnt := counters.get r c
   let from_ := fromBoard.get r c
   let to_ := toBoard.get r c
@@ -202,7 +202,7 @@ def cellRule (r : Fin gridRows) (c : Fin gridCols) (counters fromBoard toBoard :
   eqCnt ∧. eqFrom ∧. eqTo ∧. rule
 
 /-- Apply rules to all cells -/
-def rules (counters fromBoard toBoard : SMTGrid) : Smt Unit := do
+def rules (counters fromBoard toBoard : SMTGrid) : Smt .bv Unit := do
   for r in List.finRange gridRows do
     for c in List.finRange gridCols do
       assert (cellRule r c counters fromBoard toBoard)
@@ -210,7 +210,7 @@ def rules (counters fromBoard toBoard : SMTGrid) : Smt Unit := do
 /-! ## Pattern Validation -/
 
 /-- Assert that a board matches a given pattern -/
-def validPattern (pattern : Pattern) (board : SMTGrid) : Smt Unit := do
+def validPattern (pattern : Pattern) (board : SMTGrid) : Smt .bv Unit := do
   for r in List.finRange gridRows do
     for c in List.finRange gridCols do
       let patternVal := pattern.get r c
@@ -220,7 +220,7 @@ def validPattern (pattern : Pattern) (board : SMTGrid) : Smt Unit := do
 /-! ## Main Solver -/
 
 /-- Find initial state that evolves to "LIFE" pattern -/
-def life : Smt Unit := do
+def life : Smt .bv Unit := do
   -- Declare the initial board (unknowns to solve for)
   let initBoard ← declareBVTensor "x" [gridRows, gridCols] 4
   -- Declare the final board (will be constrained to match lifePattern)
@@ -233,7 +233,7 @@ def life : Smt Unit := do
   validPattern lifePattern finalBoard
 
 /-- Verify forward: Assert initial pattern, apply 3 steps, check final equals LIFE -/
-def verifyForward : Smt Unit := do
+def verifyForward : Smt .bv Unit := do
   -- Declare boards for each generation
   let gen0 ← declareBVTensor "g0" [gridRows, gridCols] 4
   let gen1 ← declareBVTensor "g1" [gridRows, gridCols] 4
@@ -311,7 +311,7 @@ def main (args : List String) : IO UInt32 := do
   IO.println "Using Z3 to verify: initialPattern →³ lifePattern"
   IO.println ""
 
-  let result ← solve verifyForward { profile := profile, dumpSmt := dumpSmt }
+  let result ← solve .z3 verifyForward { profile := profile, dumpSmt := dumpSmt }
   match result with
   | .sat _model =>
     IO.println "✓ SAT - Z3 confirms the initial pattern evolves to 'LIFE' after 3 steps!"

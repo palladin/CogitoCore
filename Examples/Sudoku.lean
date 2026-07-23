@@ -64,39 +64,39 @@ def getBox (grid : Tensor2D 9 9 α) (boxRow boxCol : Fin 3) : Vector α 9 :=
 /-! ## SMT Constraints using Vect -/
 
 /-- Assert all constraints from a Vector -/
-def assertAllV (constraints : Vector (Expr Ty.bool) n) : Smt Unit :=
+def assertAllV (constraints : Vector (Expr .bv Ty.bool) n) : Smt .bv Unit :=
   constraints.foldl (fun acc c => acc >>= fun _ => assert c) (pure ())
 
 /-- Range constraints: all cells must be in 1-9 -/
-def rangeConstraints (cells : Vector (Expr (Ty.bitVec 4)) 9) : Vector (Expr Ty.bool) 18 :=
+def rangeConstraints (cells : Vector (Expr .bv (Ty.bitVec 4)) 9) : Vector (Expr .bv Ty.bool) 18 :=
   Vector.ofFn fun i =>
     let cellIdx : Fin 9 := ⟨i.val / 2, by omega⟩
     let cell := cells.get cellIdx
     if i.val % 2 == 0 then bv 1 4 ≤.ᵤ cell else cell ≤.ᵤ bv 9 4
 
-abbrev Grid := Tensor2D 9 9 (Expr (Ty.bitVec 4))
+abbrev Grid := Tensor2D 9 9 (Expr .bv (Ty.bitVec 4))
 
 /-- Cell range constraints for entire grid -/
-def cellConstraints (vars : Grid) : Smt Unit :=
+def cellConstraints (vars : Grid) : Smt .bv Unit :=
   Tensor2D.foldRows (fun acc row => acc >>= fun _ => assertAllV (rangeConstraints row)) (pure ()) vars
 
 /-- Row uniqueness constraints -/
-def rowConstraints (vars : Grid) : Smt Unit :=
+def rowConstraints (vars : Grid) : Smt .bv Unit :=
   Tensor2D.foldRows (fun acc row => acc >>= fun _ => assert (distinctV row)) (pure ()) vars
 
 /-- Column uniqueness constraints -/
-def colConstraints (vars : Grid) : Smt Unit :=
+def colConstraints (vars : Grid) : Smt .bv Unit :=
   Vector.finRange 9 |>.foldl (fun acc c => acc >>= fun _ =>
     assert (distinctV (Tensor2D.getCol vars c))) (pure ())
 
 /-- Box uniqueness constraints -/
-def boxConstraints (vars : Grid) : Smt Unit :=
+def boxConstraints (vars : Grid) : Smt .bv Unit :=
   Vector.finRange 3 |>.foldl (fun acc br =>
     Vector.finRange 3 |>.foldl (fun acc' bc =>
       acc' >>= fun _ => assert (distinctV (getBox vars br bc))) acc) (pure ())
 
 /-- Fixed cell constraints from puzzle input -/
-def instanceConstraints (puz : Tensor2D 9 9 Nat) (vars : Grid) : Smt Unit :=
+def instanceConstraints (puz : Tensor2D 9 9 Nat) (vars : Grid) : Smt .bv Unit :=
   Tensor2D.foldlWithIndex (fun acc r c puzzleVal =>
     acc >>= fun _ =>
       if puzzleVal != 0 then assert (vars[r.val, c.val] =. bv puzzleVal 4)
@@ -105,7 +105,7 @@ def instanceConstraints (puz : Tensor2D 9 9 Nat) (vars : Grid) : Smt Unit :=
 /-! ## Main Sudoku Solver -/
 
 /-- Complete Sudoku SMT program -/
-def sudoku : Smt Unit := do
+def sudoku : Smt .bv Unit := do
   let vars ← declareBVTensor "x" [9, 9] 4
   cellConstraints vars
   rowConstraints vars
@@ -163,7 +163,7 @@ def main (args : List String) : IO UInt32 := do
   IO.println ""
 
   IO.println "Solving with Z3..."
-  let result ← solve sudoku { dumpSmt := dumpSmt, profile := profile }
+  let result ← solve .z3 sudoku { dumpSmt := dumpSmt, profile := profile }
   match result with
   | .sat model =>
     IO.println "SAT - Solution found!"
