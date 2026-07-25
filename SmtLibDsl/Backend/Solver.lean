@@ -47,7 +47,7 @@ def ofCnf [CnfLowerer lowerer] [SatBackend satBackend]
     if config.dumpSmt then
       IO.println s!"SMT-LIB2 script for {lowererName lowerer}:"
       IO.println (compile smt)
-    let report ← runCnfPipeline lowerer satBackend smt
+    let report ← runCnfPipeline lowerer satBackend smt config
     if config.profile then
       IO.println s!"{lowererName lowerer} → {satBackendName satBackend} profile:"
       IO.println s!"  Lowering time: {report.timing.bridgeMs}ms"

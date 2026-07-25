@@ -19,12 +19,13 @@ def Cadical.check (backend : Cadical) : IO (Except String String) := do
   DimacsCli.checkExecutable "CaDiCaL" (← backend.executablePath)
     "SMTLIBDSL_CADICAL_PATH"
 
-def Cadical.run (backend : Cadical) (artifact : CnfArtifact) : IO SatResult := do
-  DimacsCli.run "CaDiCaL" (← backend.executablePath) artifact
+def Cadical.run (backend : Cadical) (artifact : CnfArtifact)
+    (config : SolveConfig := {}) : IO SatResult := do
+  DimacsCli.run "CaDiCaL" (← backend.executablePath) artifact config
 
 instance : SatBackend Cadical where
   name _ := "CaDiCaL"
   check := Cadical.check
-  run := Cadical.run
+  run := fun backend artifact config => Cadical.run backend artifact config
 
 end SmtLibDsl

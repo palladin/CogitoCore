@@ -8,9 +8,11 @@ namespace SmtLibDsl
 
 open SMT
 
-/-- Configuration shared by external SMT solver backends. -/
+/-- Configuration shared by external SMT and SAT solver backends. -/
 structure SolveConfig where
   dumpSmt : Bool := false
+  /-- Solver-phase wall-clock limit in milliseconds. For a composed CNF/SAT
+  solver this is enforced by the SAT backend after lowering. -/
   timeout : Option Nat := none
   profile : Bool := false
 
@@ -203,7 +205,7 @@ inductive SatResult where
 class SatBackend (backend : Type) where
   name : backend → String
   check : backend → IO (Except String String)
-  run : backend → CnfArtifact → IO SatResult
+  run : backend → CnfArtifact → SolveConfig → IO SatResult
 
 def satBackendName [SatBackend backend] (backend : backend) : String :=
   SatBackend.name backend
@@ -217,8 +219,8 @@ def lowerWith [CnfLowerer lowerer] (lowerer : lowerer)
   CnfLowerer.lower lowerer smt
 
 def runSatBackend [SatBackend backend] (backend : backend)
-    (artifact : CnfArtifact) : IO SatResult :=
-  SatBackend.run backend artifact
+    (artifact : CnfArtifact) (config : SolveConfig := {}) : IO SatResult :=
+  SatBackend.run backend artifact config
 
 /-- Solver-independent two-backend comparison. -/
 structure BackendComparison (vars : VarSchema) where

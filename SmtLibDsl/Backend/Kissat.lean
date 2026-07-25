@@ -19,13 +19,14 @@ def Kissat.check (backend : Kissat) : IO (Except String String) := do
   DimacsCli.checkExecutable "Kissat" (← backend.executablePath)
     "SMTLIBDSL_KISSAT_PATH"
 
-def Kissat.run (backend : Kissat) (artifact : CnfArtifact) : IO SatResult := do
-  DimacsCli.run "Kissat" (← backend.executablePath) artifact
+def Kissat.run (backend : Kissat) (artifact : CnfArtifact)
+    (config : SolveConfig := {}) : IO SatResult := do
+  DimacsCli.run "Kissat" (← backend.executablePath) artifact config
 
 instance : SatBackend Kissat where
   name _ := "Kissat"
   check := Kissat.check
-  run := Kissat.run
+  run := fun backend artifact config => Kissat.run backend artifact config
 
 namespace SMT
 

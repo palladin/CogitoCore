@@ -582,7 +582,7 @@ def main (args : List String) : IO UInt32 := do
   | none => IO.println s!"Max steps: {maxTries}"
   match timeout with
   | some milliseconds =>
-    IO.println s!"Direct SMT timeout: {milliseconds}ms per query"
+    IO.println s!"Solver-phase timeout: {milliseconds}ms (direct SMT or SAT)"
   | none => pure ()
   IO.println ""
 

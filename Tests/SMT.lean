@@ -467,6 +467,36 @@ def cnfUnsatIntegrationProgram : Smt .bv Unit := do
   assert (x =. bv 1 4)
   assert (x =. bv 2 4)
 
+private def timeoutProbeArtifact : CnfArtifact := {
+  dimacs := "p cnf 1 1\n1 0\n"
+  atoms := #["timeout_probe"]
+  clauses := #[#[1]]
+  modelBits := #[]
+}
+
+private structure TimeoutProbeLowerer
+private structure TimeoutProbeSat
+
+private instance : CnfLowerer TimeoutProbeLowerer where
+  name _ := "timeout probe lowerer"
+  check _ := pure (.ok "timeout probe lowerer")
+  lower _ _ := pure (.ok timeoutProbeArtifact)
+
+private instance : SatBackend TimeoutProbeSat where
+  name _ := "timeout probe SAT"
+  check _ := pure (.ok "timeout probe SAT")
+  run _ artifact config :=
+    SmtLibDsl.DimacsCli.runWithArgs "timeout probe" "/bin/sh"
+      #["-c", "sleep 1"] artifact config
+
+def runSatTimeoutIntegration : IO (Except String Unit) := do
+  let solver : Solver .bv :=
+    Solver.ofCnf TimeoutProbeLowerer.mk TimeoutProbeSat.mk
+  match ← solve solver cnfIntegrationProgram { timeout := some 25 } with
+  | .unknown "timeout (25ms)" => return .ok ()
+  | result =>
+    return .error s!"expected the SAT process to time out through SolveConfig, got {result}"
+
 def backendBoolProgram : Smt .bool Unit := do
   let flag ← declareBool "backend_flag"
   assert flag
@@ -687,6 +717,11 @@ def allTests : TestSeq :=
 
 -- Main entry point for running tests
 def main : IO UInt32 := do
+  match ← runSatTimeoutIntegration with
+  | .error error =>
+    IO.eprintln s!"SAT timeout integration failed: {error}"
+    return 1
+  | .ok () => pure ()
   match ← runSmtBackendIntegration with
   | .error error =>
     IO.eprintln s!"SMT backend integration failed: {error}"

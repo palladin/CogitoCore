@@ -230,6 +230,7 @@ There is one solving entry point:
 
 ```lean
 solve (solver : Solver lang) (query : Smt lang Unit)
+  (config : SolveConfig := {})
 -- IO (Result query.schema)
 ```
 
@@ -242,6 +243,7 @@ solve (.cvc5 : Solver .abv) arrayQuery
 solve (.cvc5 : Solver .all) datatypeQuery
 solve (.kissat : Solver .bv) bvQuery
 solve (.cadical : Solver .bv) bvQuery
+solve (.cadical : Solver .bv) bvQuery { timeout := some 10_000 }
 ```
 
 `Solver.kissat` and `Solver.cadical` have type `Solver .bv`, so they cannot be
@@ -540,9 +542,11 @@ At every move bound, the example sends the same `.bv` query through Z3, cvc5,
 Kissat, and CaDiCaL, reports wall-clock and cumulative times, checks that all
 conclusive backend answers agree, and only then replays the decoded solution.
 Missing solver executables are reported and skipped. `--timeout=<ms>` bounds
-each direct SMT call; a timeout is inconclusive, while contradictory SAT and
-UNSAT answers remain a hard error. The CNF/SAT pipelines continue and every
-decoded SAT model is still checked in Lean.
+the direct SMT process or the SAT phase of a CNF/SAT pipeline, including
+Kissat and CaDiCaL. CNF lowering and source compilation are timed separately,
+so total wall-clock time can exceed that solver-phase limit. A timeout is
+inconclusive, while contradictory SAT and UNSAT answers remain a hard error.
+Every decoded SAT model is still checked in Lean.
 
 `--bound=<steps>` benchmarks one fixed query instead of paying for every
 smaller search bound. Microban 1 has a 33-move solution, so `--bound=33` is the

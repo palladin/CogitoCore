@@ -421,7 +421,8 @@ structure CnfSolveReport (vars : VarSchema) where
 /-- Lower with any mapped-CNF backend, solve with any SAT backend, decode the
 stable bit mapping, and Lean-check SAT before returning it. -/
 def runCnfPipeline [CnfLowerer lowerer] [SatBackend satBackend]
-    (lowerer : lowerer) (satBackend : satBackend) (smt : Smt .bv Unit) :
+    (lowerer : lowerer) (satBackend : satBackend) (smt : Smt .bv Unit)
+    (config : SolveConfig := {}) :
     IO (CnfSolveReport smt.schema) := do
   let bridgeStart ← IO.monoNanosNow
   let bridged ← lowerWith lowerer smt
@@ -438,7 +439,7 @@ def runCnfPipeline [CnfLowerer lowerer] [SatBackend satBackend]
     }
   | .ok bridge =>
     let solveStart ← IO.monoNanosNow
-    let raw ← runSatBackend satBackend bridge
+    let raw ← runSatBackend satBackend bridge config
     let solveEnd ← IO.monoNanosNow
     let solveMs := (solveEnd - solveStart).toFloat / 1_000_000.0
     match raw with
@@ -505,7 +506,7 @@ def compareWithCnf
   let smtStart ← IO.monoNanosNow
   let smtResult ← runCheckedSmtBackend smtBackend smt config
   let smtEnd ← IO.monoNanosNow
-  let cnf ← runCnfPipeline lowerer satBackend smt
+  let cnf ← runCnfPipeline lowerer satBackend smt config
   pure {
     smtBackendName := backendName smtBackend
     smtResult
